@@ -27,12 +27,12 @@ bqstorageclient = bigquery_storage.BigQueryReadClient()
 
 config_hierarchy = [[],
                     ['geo_continent'],
-                    ['country_code'],
-                    ['country_code', 'device_category'],
-                    ['country_code', 'device_category', 'rtt_category'],
-                    ['country_code', 'domain'],
-                    ['country_code', 'device_category', 'domain'],
-                    ['country_code', 'device_category', 'rtt_category', 'domain']]
+                    ['geo_continent', 'country_code'],
+                    ['geo_continent', 'country_code', 'device_category'],
+                    ['geo_continent', 'country_code', 'device_category', 'rtt_category'],
+                    ['geo_continent', 'country_code', 'domain'],
+                    ['geo_continent', 'country_code', 'domain', 'device_category'],
+                    ['geo_continent', 'country_code', 'domain', 'device_category', 'rtt_category']]
 
 def get_bq_data(query, replacement_dict={}):
     for k, v in replacement_dict.items():
@@ -74,34 +74,55 @@ def main_create_daily_configs(last_date, days):
                  'min_all_bidder_session_count': 100000,
                  'min_individual_bidder_session_count': 1000}
 
+    all_dims = list(set(sum(config_hierarchy, [])))
+
     for days_smoothing in [1, 7]:
-        for dims_list in config_hierarchy:
+        if days < days_smoothing:
+            continue
+
+        select_for_union_list = []
+        for config_level, dims_list in enumerate(config_hierarchy):
             dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing)
             repl_dict['dims'] = dims
             repl_dict['N_days_preceding'] = days_smoothing - 1
-            repl_dict['tablename_to'] = f'DAS_config{name}'
+            repl_dict['tablename_to_bidder_rps'] = f'DAS_bidder_rps{name}'
+            repl_dict['tablename_to_config'] = f'DAS_config{name}'
+            repl_dict['bidder_count'] = 3
 
-            print(f'creating: {repl_dict['tablename_to']}')
+            print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
 
-            query = open(os.path.join(sys.path[0], 'queries/query_create_daily_country_config.sql'), "r").read()
+            query = open(os.path.join(sys.path[0], 'queries/query_create_config.sql'), "r").read()
             get_bq_data(query, repl_dict)
+
+            select_dims = ", ".join([d if d in dims_list else f"'default' {d}" for d in all_dims])
+            select_for_union = (f'(select date, {select_dims}, bidders, rps, {config_level} config_level '
+                                f'from `{project_id}.DAS_increment.{repl_dict['tablename_to_config']}`)')
+            select_for_union_list.append(select_for_union)
+
+        query = (f'CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_combined_uncompressed_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}` '
+                 f'OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)) '
+                 f'AS {" union all ".join(select_for_union_list)}')
+        get_bq_data(query)
 
 
 def main_plot_daily_config(last_date, days):
 
     for days_smoothing in [1, 7]:
+        if days < days_smoothing:
+            continue
+
         for dims_list in config_hierarchy:
             dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing)
-            tablename_to = f'DAS_config{name}'
-            query = (f'select bidder || "_" || status bidder_status, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
-                         f'from `{project_id}.DAS_increment.{tablename_to}` '
+            tablename = f'DAS_bidder_rps{name}'
+            query = (f'select bidder, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
+                         f'from `{project_id}.DAS_increment.{tablename}` '
                          f'group by 1, 2')
 
             df = get_bq_data(query)
             df['revenue'] = df['session_count'] * df['rps']
 
             for col in ['count', 'session_count', 'revenue']:
-                df_p = df.pivot(index='rn', columns='bidder_status', values=col).fillna(0)
+                df_p = df.pivot(index='rn', columns='bidder', values=col).fillna(0)
                 df_p_cum_sum = df_p.cumsum()
                 df_totals = df_p.sum()
                 df_r = df_p_cum_sum / df_totals
@@ -119,8 +140,8 @@ def main_plot_daily_config(last_date, days):
                 where_and += f' and device_category = "desktop"'
 
             query = (f'select date, bidder, avg(rn) rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
-                     f'from `{project_id}.DAS_increment.{tablename_to}` '
-                     f'where status = "client" {where_and}'
+                     f'from `{project_id}.DAS_increment.{tablename}` '
+                     f'where 1=1 {where_and}'
                      f'group by 1, 2')
 
             df = get_bq_data(query)
@@ -135,8 +156,7 @@ def main_plot_daily_config(last_date, days):
             if 'continent' in dims:
                 query = (
                     f'select date, bidder, geo_continent, avg(rn) rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
-                    f'from `{project_id}.DAS_increment.{tablename_to}` '
-                    f'where status = "client"'
+                    f'from `{project_id}.DAS_increment.{tablename}` '
                     f'group by 1, 2, 3')
                 df = get_bq_data(query)
 
@@ -157,8 +177,8 @@ def main_plot_daily_config(last_date, days):
 
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
-    days = 20
-    main_create_bidder_session_stats(last_date, days)
+    days = 2
+    # main_create_bidder_session_stats(last_date, days)
     main_create_daily_configs(last_date, days)
     main_plot_daily_config(last_date, days)
 
