@@ -156,12 +156,13 @@ def main_plot_daily_config(last_date, days):
 
 
 if __name__ == "__main__":
-    # last_date = dt.date(2024, 10, 10)
-    # days = 20
-    # main_create_bidder_session_stats(last_date, days)
-    # #main_create_daily_configs(last_date, days)
-
-    last_date = dt.date(2024, 10, 8)
+    last_date = dt.date(2024, 10, 10)
     days = 20
+    main_create_bidder_session_stats(last_date, days)
     main_create_daily_configs(last_date, days)
     main_plot_daily_config(last_date, days)
+
+    # last_date = dt.date(2024, 10, 8)
+    # days = 20
+    # main_create_daily_configs(last_date, days)
+    # main_plot_daily_config(last_date, days)
