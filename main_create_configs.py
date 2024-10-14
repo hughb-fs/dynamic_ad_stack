@@ -39,7 +39,7 @@ def get_bq_data(query, replacement_dict={}):
         query = query.replace("{" + k + "}", str(v))
     return client.query(query).result().to_dataframe(bqstorage_client=bqstorageclient, progress_bar_type='tqdm')
 
-def main_create_bidder_session_stats(last_date, days):
+def main_create_session_stats(last_date, days):
 
     repl_dict = {'project_id': project_id,
                  'processing_date': last_date,
@@ -52,12 +52,14 @@ def main_create_bidder_session_stats(last_date, days):
           f'{repl_dict["aer_to_bwr_join_type"]}_{repl_dict["processing_date"]}_'
           f'{repl_dict["days_back_start"]}_{repl_dict["days_back_end"]}')
 
-    query = open(os.path.join(sys.path[0], 'queries/query_daily_bidder_domain_expt_session_stats.sql'), "r").read()
+    print(dt.datetime.now())
+    query = open(os.path.join(sys.path[0], 'queries/query_daily_expt_session_stats.sql'), "r").read()
     get_bq_data(query, repl_dict)
 
-    # query = open(os.path.join(sys.path[0], 'queries/query_daily_opt_session_stats.sql'), "r").read()
-    # get_bq_data(query, repl_dict)
-
+    print(dt.datetime.now())
+    query = open(os.path.join(sys.path[0], 'queries/query_daily_session_stats.sql'), "r").read()
+    get_bq_data(query, repl_dict)
+    print(dt.datetime.now())
 
 def get_dims_and_name(dims_list, last_date, days, days_smoothing):
     dims = ''.join([', ' + d for d in dims_list])
@@ -74,7 +76,7 @@ def main_create_daily_configs(last_date, days):
                  'min_all_bidder_session_count': 100000,
                  'min_individual_bidder_session_count': 1000}
 
-    all_dims = list(set(sum(config_hierarchy, [])))
+    # all_dims = list(set(sum(config_hierarchy, [])))
 
     for days_smoothing in [1, 7]:
         if days < days_smoothing:
@@ -88,21 +90,22 @@ def main_create_daily_configs(last_date, days):
             repl_dict['tablename_to_bidder_rps'] = f'DAS_bidder_rps{name}'
             repl_dict['tablename_to_config'] = f'DAS_config{name}'
             repl_dict['bidder_count'] = 3
+            repl_dict['config_level'] = config_level
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
 
             query = open(os.path.join(sys.path[0], 'queries/query_create_config.sql'), "r").read()
             get_bq_data(query, repl_dict)
 
-            select_dims = ", ".join([d if d in dims_list else f"'default' {d}" for d in all_dims])
-            select_for_union = (f'(select date, {select_dims}, bidders, rps, {config_level} config_level '
-                                f'from `{project_id}.DAS_increment.{repl_dict['tablename_to_config']}`)')
-            select_for_union_list.append(select_for_union)
+            # select_dims = ", ".join([d if d in dims_list else f"'default' {d}" for d in all_dims])
+            # select_for_union = (f'(select date, {select_dims}, bidders, rps, {config_level} config_level '
+            #                     f'from `{project_id}.DAS_increment.{repl_dict['tablename_to_config']}`)')
+            # select_for_union_list.append(select_for_union)
 
-        query = (f'CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_combined_uncompressed_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}` '
-                 f'OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)) '
-                 f'AS {" union all ".join(select_for_union_list)}')
-        get_bq_data(query)
+        # query = (f'CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_combined_uncompressed_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}` '
+        #          f'OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)) '
+        #          f'AS {" union all ".join(select_for_union_list)}')
+        # get_bq_data(query)
 
 
 def main_plot_daily_config(last_date, days):
@@ -174,15 +177,46 @@ def main_plot_daily_config(last_date, days):
                         pdf.savefig()
 
 
+def main_create_DAS_bidders(last_date, days):
+
+
+    df_list = []
+
+    for days_smoothing in [1, 7]:
+        for days_match in [0, 1, 2, 7]:
+            print(f'doing: days_smoothing: {days_smoothing}, days_match: {days_match}')
+
+            repl_dict_1 = {'project_id': project_id,
+                           'tablename_ext_DAS_config': f'{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}',
+                           'tablename_ext_session_stats': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
+                           'days_match': days_match,
+                           'tablename_to': f'DAS_bidders_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}_{days_match}'}
+
+            query = open(os.path.join(sys.path[0], 'queries/query_create_DAS_bidders_from_configs.sql'), "r").read()
+            get_bq_data(query, repl_dict_1)
+
+            repl_dict_2 = {'project_id': project_id,
+                         'tablename_ext_bidder_rps': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
+                         'tablename_bidders': repl_dict_1['tablename_to'],
+                         'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
+
+            query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
+            df = get_bq_data(query, repl_dict_2)
+            df = df.set_index('date').rename(columns={'revenue': f'rev_{days_smoothing}_{days_match}'})
+            df_list.append(df)
+
+    df_rev = pd.concat(df_list, axis=1)
+
+    g = 0
+
 
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
-    days = 2
-    # main_create_bidder_session_stats(last_date, days)
-    main_create_daily_configs(last_date, days)
-    main_plot_daily_config(last_date, days)
+#    days = 20
+#    main_create_session_stats(last_date, days)
 
-    # last_date = dt.date(2024, 10, 8)
-    # days = 20
-    # main_create_daily_configs(last_date, days)
+    days = 5
+#    main_create_daily_configs(last_date, days)
     # main_plot_daily_config(last_date, days)
+    main_create_DAS_bidders(last_date, days)
+

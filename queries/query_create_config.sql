@@ -12,7 +12,7 @@ with raw as (
     left join `sublime-elixir-273810.ideal_ad_stack.continent_country_mapping` on country_code = geo_country
     where bidder not in ('amazon', 'preGAMAuction', 'seedtag', 'justpremium', 'sonobi')
         and status = 'client'
-        and date <= date_sub('{processing_date}', interval 1 day)
+--        and date <= date_sub('{processing_date}', interval 1 day)
         and country_code is not null and country_code != ''
 
 ), agg_1_day as (
@@ -68,7 +68,7 @@ with raw as (
 
 )
 
-select cast('{processing_date}' as date) as processing_date, *
+select cast('{processing_date}' as date) as processing_date, {config_level} config_level, *
 from rank;
 
 CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}`
@@ -76,11 +76,23 @@ CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}`
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
 
-select date {dims},
-    string_agg(bidder, ',' order by bidder) bidders, sum(rps) rps
+--select date_add(date, interval 1 day) date {dims}, {config_level} config_level,
+select date {dims}, {config_level} config_level,
+    array_agg(bidder) bidders
 from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
 where rn <= {bidder_count}
-group by date {dims}
+group by date {dims};
+
+--CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}_string`
+--    OPTIONS (
+--        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
+--    AS
+--
+--select date_add(date, interval 1 day) date {dims}, {config_level} config_level,
+--    string_agg(bidder, ',' order by bidder) bidders
+--from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
+--where rn <= {bidder_count}
+--group by date {dims};
 
 
 
