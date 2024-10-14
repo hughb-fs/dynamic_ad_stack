@@ -68,6 +68,7 @@ def get_dims_and_name(dims_list, last_date, days, days_smoothing):
 
 def main_create_daily_configs(last_date, days):
 
+    bidder_count = 10
     processing_date = last_date - dt.timedelta(days=1)
     repl_dict = {'project_id': project_id,
                  'tablename_from': f'daily_bidder_domain_expt_session_stats_join_{last_date.strftime("%Y-%m-%d")}_{days}_1',
@@ -89,7 +90,7 @@ def main_create_daily_configs(last_date, days):
             repl_dict['N_days_preceding'] = days_smoothing - 1
             repl_dict['tablename_to_bidder_rps'] = f'DAS_bidder_rps{name}'
             repl_dict['tablename_to_config'] = f'DAS_config{name}'
-            repl_dict['bidder_count'] = 3
+            repl_dict['bidder_count'] = bidder_count
             repl_dict['config_level'] = config_level
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
@@ -177,22 +178,23 @@ def main_plot_daily_config(last_date, days):
                         pdf.savefig()
 
 
-def main_create_DAS_bidders(last_date, days):
+def main_create_bidders(last_date, days, strategy, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
 
+    assert strategy in ['DAS', 'YM_daily']
 
     df_list = []
 
-    for days_smoothing in [1, 7]:
-        for days_match in [0, 1, 2, 7]:
-            print(f'doing: days_smoothing: {days_smoothing}, days_match: {days_match}')
+    for days_smoothing in days_smoothing_list:
+        for days_match in days_match_list:
+            print(f'doing: strategy: {strategy}, days_smoothing: {days_smoothing}, days_match: {days_match}')
 
             repl_dict_1 = {'project_id': project_id,
                            'tablename_ext_DAS_config': f'{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}',
                            'tablename_ext_session_stats': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
                            'days_match': days_match,
-                           'tablename_to': f'DAS_bidders_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}_{days_match}'}
+                           'tablename_to': f'{strategy}_bidders_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}_{days_match}'}
 
-            query = open(os.path.join(sys.path[0], 'queries/query_create_DAS_bidders_from_configs.sql'), "r").read()
+            query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
             get_bq_data(query, repl_dict_1)
 
             repl_dict_2 = {'project_id': project_id,
@@ -202,21 +204,31 @@ def main_create_DAS_bidders(last_date, days):
 
             query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
             df = get_bq_data(query, repl_dict_2)
-            df = df.set_index('date').rename(columns={'revenue': f'rev_{days_smoothing}_{days_match}'})
+            df = df.set_index('date').rename(columns={'revenue': f'rev_{strategy}_{days_smoothing}_{days_match}'})
             df_list.append(df)
 
     df_rev = pd.concat(df_list, axis=1)
+    return df_rev
+
+def main_compare_strategies(last_date, days):
+
+    df_rev_list = []
+    for strategy in ['YM_daily', 'DAS']:
+        df_rev_list.append(main_create_bidders(last_date, days, strategy, days_smoothing_list=[1], days_match_list=[-1, 0, 1, 2]))
+
+    df_rev = pd.concat(df_rev_list)
+    fig, ax = plt.subplots(figsize=(12, 9))
+    df_rev.plot(ax=ax)
+    fig.savefig(f'plots/sim.png')
 
     g = 0
 
 
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
-#    days = 20
+    days = 20
 #    main_create_session_stats(last_date, days)
-
-    days = 5
-#    main_create_daily_configs(last_date, days)
+    main_create_daily_configs(last_date, days)
     # main_plot_daily_config(last_date, days)
-    main_create_DAS_bidders(last_date, days)
+    main_compare_strategies(last_date, days)
 
