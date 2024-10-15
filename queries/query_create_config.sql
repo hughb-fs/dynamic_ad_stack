@@ -76,9 +76,7 @@ CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}`
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
 
---select date_add(date, interval 1 day) date {dims}, {config_level} config_level,
-select date {dims}, {config_level} config_level,
-    array_agg(bidder) bidders
+select date {dims}, {config_level} config_level, array_agg(bidder) bidders
 from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
 where rn <= {bidder_count}
 group by date {dims};
@@ -88,7 +86,7 @@ group by date {dims};
 --        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
 --    AS
 --
---select date_add(date, interval 1 day) date {dims}, {config_level} config_level,
+--select date {dims}, {config_level} config_level,
 --    string_agg(bidder, ',' order by bidder) bidders
 --from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
 --where rn <= {bidder_count}

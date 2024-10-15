@@ -6,7 +6,7 @@ CREATE OR REPLACE TABLE `streamamp-qa-239417.DAS_increment.{tablename_to}`
 with bidders as(
     select t1.* except(bidders), bidder
     from `streamamp-qa-239417.DAS_increment.{tablename_bidders}` t1, t1.bidders as bidder
-), 
+),
 
 t3 as (
     select bidders.*,
@@ -14,8 +14,8 @@ t3 as (
         coalesce(l7.bidder, l6.bidder, l5.bidder, l4.bidder, l3.bidder, l2.bidder, l1.bidder, l0.bidder) bidder,
         coalesce(l7.rn, l6.rn, l5.rn, l4.rn, l3.rn, l2.rn, l1.rn, l0.rn) rn,
         coalesce(l7.rps, l6.rps, l5.rps, l4.rps, l3.rps, l2.rps, l1.rps, l0.rps) rps
-    
-    from bidders 
+
+    from bidders
     left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_domain_device_category_rtt_category_{tablename_ext_bidder_rps}_1` l7
         using (date, bidder, geo_continent, country_code, domain, device_category, rtt_category)
     left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_domain_device_category_{tablename_ext_bidder_rps}_1` l6
