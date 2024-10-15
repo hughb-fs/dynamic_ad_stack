@@ -66,15 +66,16 @@ def get_dims_and_name(dims_list, last_date, days, days_smoothing):
     name = f"{dims.replace(", ", "_")}_{last_date.strftime("%Y-%m-%d")}_{days}_1_ds{days_smoothing}"
     return dims, name
 
-def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1, 7]):
+def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1, 7],
+                              min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
 
     processing_date = last_date - dt.timedelta(days=1)
     repl_dict = {'project_id': project_id,
                  'tablename_from': f'daily_bidder_domain_expt_session_stats_join_{last_date.strftime("%Y-%m-%d")}_{days}_1',
                  'processing_date': processing_date.strftime("%Y-%m-%d"),
                  'days_back_end': 1,
-                 'min_all_bidder_session_count': 100000,
-                 'min_individual_bidder_session_count': 1000}
+                 'min_all_bidder_session_count': min_all_bidder_session_count,
+                 'min_individual_bidder_session_count': min_individual_bidder_session_count}
 
     # all_dims = list(set(sum(config_hierarchy, [])))
 
@@ -177,7 +178,7 @@ def main_plot_daily_config(last_date, days):
                         pdf.savefig()
 
 
-def main_create_bidders(last_date, days, strategy, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
+def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
 
     assert strategy in ['DAS', 'YM_daily']
 
@@ -209,34 +210,55 @@ def main_create_bidders(last_date, days, strategy, days_smoothing_list=[1, 7], d
     df_rev = pd.concat(df_list, axis=1)
     return df_rev
 
-def main_compare_strategies(last_date, days, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
+def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
 
     df_rev_list = []
     for strategy in strategy_list:
-        df_rev_list.append(main_create_bidders(last_date, days, strategy, days_smoothing_list, days_match_list))
+        df_rev_list.append(main_create_bidders(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list))
 
     df_rev = pd.concat(df_rev_list, axis=1)
     tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
     perc_uplift_rev = (tot_rev / tot_rev['rev_DAS_1_1'] - 1) * 100
+    rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
+    df_rev = df_rev.rename(columns=rename_dict)
 
     fig, ax = plt.subplots(figsize=(12, 9))
     df_rev.plot(ax=ax)
-    fig.savefig(f'plots/sim.png')
+    fig.savefig(f'plots/sim_{bidder_count}.png')
 
+    return perc_uplift_rev
     g = 0
+def main_investiagte(last_date, days):
+    min_all_bidder_session_count = 100000
+    min_individual_bidder_session_count = 1000
+    strategy_list = ['YM_daily', 'DAS']
+    days_smoothing_list = [1]#, 7]
+    days_match_list = [1]#[0, 1, 2, 7]
 
+    res_dict = {}
+    for bidder_count in [5, 8, 10]:
+        main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list, min_all_bidder_session_count,
+                                  min_individual_bidder_session_count)
+        res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list)
+
+        res_dict[f'{min_all_bidder_session_count}_{min_individual_bidder_session_count}_{b}'] = res
+
+    res_all = pd.DataFrame(res_dict)
+    res_all.to_csv('plots/res_all.csv')
 
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
     days = 20
 #    main_create_session_stats(last_date, days)
 
-    bidder_count = 10
-    strategy_list = ['YM_daily', 'DAS']
-    days_smoothing_list = [1, 7]
-    days_match_list = [0, 1, 2, 7]
+    main_investiagte(last_date, days)
 
-    main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list)
+    # bidder_count = 10
+    # strategy_list = ['YM_daily', 'DAS']
+    # days_smoothing_list = [1, 7]
+    # days_match_list = [0, 1, 2, 7]
+
+#    main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list)
     # main_plot_daily_config(last_date, days)
-    main_compare_strategies(last_date, days, strategy_list, days_smoothing_list, days_match_list)
+    # main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list)
 
