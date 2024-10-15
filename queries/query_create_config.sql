@@ -1,9 +1,5 @@
 
-
-CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
-    OPTIONS (
-        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
-    AS
+CREATE TEMP TABLE bidder_rps as
 
 with raw as (
 
@@ -71,15 +67,27 @@ with raw as (
 select cast('{processing_date}' as date) as processing_date, {config_level} config_level, *
 from rank;
 
+
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
+    OPTIONS (
+        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
+    AS
+
+select date {dims}, {config_level} config_level, array_agg(struct(bidder, rps, rn)) as bidder_rps
+from bidder_rps
+group by date {dims};
+
+
 CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}`
     OPTIONS (
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
 
 select date {dims}, {config_level} config_level, array_agg(bidder) bidders
-from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
+from bidder_rps
 where rn <= {bidder_count}
 group by date {dims};
+
 
 --CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}_string`
 --    OPTIONS (
@@ -88,7 +96,7 @@ group by date {dims};
 --
 --select date {dims}, {config_level} config_level,
 --    string_agg(bidder, ',' order by bidder) bidders
---from `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
+--from bidder_rps
 --where rn <= {bidder_count}
 --group by date {dims};
 

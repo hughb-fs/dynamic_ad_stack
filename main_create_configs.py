@@ -196,18 +196,19 @@ def main_create_bidders(last_date, days, strategy, days_smoothing_list=[1, 7], d
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
             get_bq_data(query, repl_dict_1)
 
-            repl_dict_2 = {'project_id': project_id,
-                         'tablename_ext_bidder_rps': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
-                         'tablename_bidders': repl_dict_1['tablename_to'],
-                         'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
+            # repl_dict_2 = {'project_id': project_id,
+            #              'tablename_ext_bidder_rps': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
+            #              'tablename_bidders': repl_dict_1['tablename_to'],
+            #              'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
+            #
+            # query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
+            # df = get_bq_data(query, repl_dict_2)
+            # df = df.set_index('date').rename(columns={'revenue': f'rev_{strategy}_{days_smoothing}_{days_match}'})
+            # df_list.append(df)
 
-            query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-            df = get_bq_data(query, repl_dict_2)
-            df = df.set_index('date').rename(columns={'revenue': f'rev_{strategy}_{days_smoothing}_{days_match}'})
-            df_list.append(df)
-
-    df_rev = pd.concat(df_list, axis=1)
-    return df_rev
+    # df_rev = pd.concat(df_list, axis=1)
+    # return df_rev
+    return pd.DataFrame()
 
 def main_compare_strategies(last_date, days, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
 
@@ -215,13 +216,13 @@ def main_compare_strategies(last_date, days, strategy_list=['YM_daily', 'DAS'], 
     for strategy in strategy_list:
         df_rev_list.append(main_create_bidders(last_date, days, strategy, days_smoothing_list, days_match_list))
 
-    df_rev = pd.concat(df_rev_list, axis=1)
-    tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
-    perc_uplift_rev = (tot_rev / tot_rev['rev_DAS_1_1'] - 1) * 100
-
-    fig, ax = plt.subplots(figsize=(12, 9))
-    df_rev.plot(ax=ax)
-    fig.savefig(f'plots/sim.png')
+    # df_rev = pd.concat(df_rev_list, axis=1)
+    # tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
+    # perc_uplift_rev = (tot_rev / tot_rev['rev_DAS_1_1'] - 1) * 100
+    #
+    # fig, ax = plt.subplots(figsize=(12, 9))
+    # df_rev.plot(ax=ax)
+    # fig.savefig(f'plots/sim.png')
 
     g = 0
 
