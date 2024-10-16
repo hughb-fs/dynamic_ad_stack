@@ -240,7 +240,7 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
 
     for days_smoothing in days_smoothing_list:
         for days_match in days_match_list:
-            print(f'doing: strategy: {strategy}, min_individual_bidder_session_count: {min_individual_bidder_session_count}, '
+            print(f'doing: strategy: {strategy}, min_all_bidder_session_count: {min_all_bidder_session_count}, '
                   f'min_individual_bidder_session_count: {min_individual_bidder_session_count}, days_smoothing: {days_smoothing}, '
                   f'bidder_count: {bidder_count}, days_match: {days_match}')
 
@@ -252,10 +252,10 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
                            'tablename_to': f'{strategy}_bidders_{tablename_ext}_bm{days_match}_bc{bidder_count}'}
 
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
-#            get_bq_data(query, repl_dict_1)
+            get_bq_data(query, repl_dict_1)
 
             tablename_ext_bidder_rps = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, 1)
-#            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
             repl_dict_2 = {'project_id': project_id,
                            'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
                            'tablename_bidders': repl_dict_1['tablename_to'],
@@ -295,10 +295,10 @@ def main_investiagte(last_date, days):
     days_match_list = [0, 1, 2, 7]
 
     res_dict = {}
-    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (100000, 200)]:
+    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (10000, 200)]:
         for bidder_count in [5, 8, 10]:
-            # main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
-            #                           min_all_bidder_session_count, min_individual_bidder_session_count)
+            main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
+                                      min_all_bidder_session_count, min_individual_bidder_session_count)
             res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list,
                                           min_all_bidder_session_count, min_individual_bidder_session_count)
 
