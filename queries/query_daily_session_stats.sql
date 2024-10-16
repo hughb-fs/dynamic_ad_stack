@@ -1,5 +1,7 @@
 
-DECLARE dates ARRAY<DATE> DEFAULT GENERATE_DATE_ARRAY(DATE_SUB('{processing_date}', INTERVAL {days_back_start} DAY), DATE_SUB('{processing_date}', INTERVAL {days_back_end} DAY));
+DECLARE first_date DATE DEFAULT DATE_SUB('{processing_date}', INTERVAL {days_back_start} DAY);
+DECLARE last_date DATE DEFAULT DATE_SUB('{processing_date}', INTERVAL {days_back_end} DAY);
+DECLARE dates ARRAY<DATE> DEFAULT GENERATE_DATE_ARRAY(first_date, DATE_ADD(last_date, INTERVAL 1 DAY));
 
 CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{opt_tablename}`
     OPTIONS (
@@ -82,8 +84,9 @@ session_agg AS (
 )
 
 select country_code, domain, rtt_category,  --fs_clientservermask,
-        device_category, date, count(*) session_count
-               --sum(revenue) over(partition by fs_session_id) revenue
-        from session_agg
+device_category, date, count(*) session_count
+       --sum(revenue) over(partition by fs_session_id) revenue
+from session_agg
+where (first_date <= date and date <= last_date)
 group by 1, 2, 3, 4, 5
 

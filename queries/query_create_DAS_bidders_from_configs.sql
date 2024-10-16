@@ -22,7 +22,7 @@ cohort_bidders as (
         using (date, geo_continent, country_code, domain, device_category)
     left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dom_{tablename_ext_DAS_config}` l5
         using (date, geo_continent, country_code, domain)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dev_rtt_cat_{tablename_ext_DAS_config}` l4
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dev_rtt_{tablename_ext_DAS_config}` l4
         using (date, geo_continent, country_code, device_category, rtt_category)
     left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dev_{tablename_ext_DAS_config}` l3
         using (date, geo_continent, country_code, device_category)
