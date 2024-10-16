@@ -255,7 +255,7 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
             get_bq_data(query, repl_dict_1)
 
             tablename_ext_bidder_rps = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, 1)
-            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+            #tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
             repl_dict_2 = {'project_id': project_id,
                            'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
                            'tablename_bidders': repl_dict_1['tablename_to'],
@@ -289,7 +289,7 @@ def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_da
 
     return perc_uplift_rev
     g = 0
-def main_investiagte(last_date, days):
+def main_investigate(last_date, days):
     strategy_list = ['YM_daily', 'DAS']
     days_smoothing_list = [1, 7]
     days_match_list = [0, 1, 2, 7]
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
     days = 20
     #main_create_session_stats(last_date, days)
-    main_investiagte(last_date, days)
+    main_investigate(last_date, days)
 
     # bidder_count = 10
     # strategy_list = ['YM_daily', 'DAS']
