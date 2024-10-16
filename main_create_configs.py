@@ -39,31 +39,84 @@ def get_bq_data(query, replacement_dict={}):
         query = query.replace("{" + k + "}", str(v))
     return client.query(query).result().to_dataframe(bqstorage_client=bqstorageclient, progress_bar_type='tqdm')
 
-def main_create_session_stats(last_date, days):
+def get_daily_data_tablename(expt_or_opt, expanded, last_date, days, aer_to_bwr_join_type='join', partial=False):
+
+    if expt_or_opt == "expt":
+        base = f'daily_bidder_expt_session_stats_{aer_to_bwr_join_type}_{last_date}_{days}{'_partial' if partial else ''}'
+        if expanded:
+            return base + "_unexpanded"
+        else:
+            return base + "_expanded"
+    elif expt_or_opt == "opt":
+        return f'daily_session_stats_{last_date}_{days}'
+    else:
+        assert False
+
+def main_create_session_stats_partial(last_date, days, aer_to_bwr_join_type, partial=False):
 
     repl_dict = {'project_id': project_id,
                  'processing_date': last_date,
                  'days_back_start': days,
                  'days_back_end': 1,
-                # 'aer_to_bwr_join_type': 'left join'
-                 'aer_to_bwr_join_type': 'join'}
+                 'aer_to_bwr_join_type': aer_to_bwr_join_type,
+                 'expt_tablename_unexpanded': get_daily_data_tablename('expt', False, last_date, days, aer_to_bwr_join_type, partial),
+                 'expt_tablename_expanded': get_daily_data_tablename('expt', True, last_date, days, aer_to_bwr_join_type, partial),
+                 'opt_tablename': get_daily_data_tablename('opt', False, last_date, days, partial=partial)}
 
-    print(f'creating: {project_id}.DAS_increment.daily_bidder_domain_expt_session_stats_unexpanded_'
-          f'{repl_dict["aer_to_bwr_join_type"]}_{repl_dict["processing_date"]}_'
-          f'{repl_dict["days_back_start"]}_{repl_dict["days_back_end"]}')
-
+    print(f'creating: {project_id}.DAS_increment.{repl_dict["expt_tablename_unexpanded"]}')
+    print(f'creating: {project_id}.DAS_increment.{repl_dict["expt_tablename_expanded"]}')
     print(dt.datetime.now())
     query = open(os.path.join(sys.path[0], 'queries/query_daily_expt_session_stats.sql'), "r").read()
     get_bq_data(query, repl_dict)
+    print(dt.datetime.now())
 
+    print(f'creating: {project_id}.DAS_increment.{repl_dict["opt_tablename"]}')
     print(dt.datetime.now())
     query = open(os.path.join(sys.path[0], 'queries/query_daily_session_stats.sql'), "r").read()
     get_bq_data(query, repl_dict)
     print(dt.datetime.now())
 
-def get_dims_and_name(dims_list, last_date, days, days_smoothing):
+    return repl_dict
+
+def main_create_session_stats(last_date, days):
+
+    aer_to_bwr_join_type = 'join'  # 'left_join'
+
+    if days < 10:
+        main_create_session_stats_partial(last_date, days, aer_to_bwr_join_type)
+        return
+
+    tables_to_create = {'expt_tablename_unexpanded': get_daily_data_tablename('expt', False, last_date, days, aer_to_bwr_join_type) + '_joined',
+                        'expt_tablename_expanded': get_daily_data_tablename('expt', True, last_date, days, aer_to_bwr_join_type) + '_joined',
+                        'opt_tablename': get_daily_data_tablename('opt', False, last_date, days) + '_joined'}
+
+    union_queries = dict([(t, []) for t in tables_to_create.keys()])
+    days_per_iteration = 5
+
+    for d in list(range(0, days, days_per_iteration)):
+        repl_dict = main_create_session_stats_partial(last_date - dt.timedelta(days=d), days_per_iteration, aer_to_bwr_join_type, True)
+        for name in tables_to_create.keys():
+            union_queries[name].append(f'select * from `{project_id}.DAS_increment.{repl_dict[name]}`')
+
+    for name, table in tables_to_create.items():
+        union_str = ' union all '.join(union_queries[name])
+        query = (f'CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{table}` '
+                 f'OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)) AS '
+                 f'{union_str}')
+        print(f'creating: {project_id}.DAS_increment.{table}')
+        get_bq_data(query)
+
+def get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count,
+                      days_smoothing):
+    return f"{last_date.strftime("%Y-%m-%d")}_{days}_1_mab{min_all_bidder_session_count}_mib{min_individual_bidder_session_count}_ds{days_smoothing}"
+
+def get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
+                      min_individual_bidder_session_count):
     dims = ''.join([', ' + d for d in dims_list])
-    name = f"{dims.replace(", ", "_")}_{last_date.strftime("%Y-%m-%d")}_{days}_1_ds{days_smoothing}"
+
+    tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count,
+                                      min_individual_bidder_session_count, days_smoothing)
+    name = f"{''.join(['_' + d[:3] for d in dims_list])}_{tablename_ext}"
     return dims, name
 
 def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1, 7],
@@ -71,7 +124,7 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
 
     processing_date = last_date - dt.timedelta(days=1)
     repl_dict = {'project_id': project_id,
-                 'tablename_from': f'daily_bidder_domain_expt_session_stats_join_{last_date.strftime("%Y-%m-%d")}_{days}_1',
+                 'tablename_from': get_daily_data_tablename('expt', True, last_date, days),
                  'processing_date': processing_date.strftime("%Y-%m-%d"),
                  'days_back_end': 1,
                  'min_all_bidder_session_count': min_all_bidder_session_count,
@@ -85,7 +138,7 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
 
         select_for_union_list = []
         for config_level, dims_list in enumerate(config_hierarchy):
-            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing)
+            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             repl_dict['dims'] = dims
             repl_dict['N_days_preceding'] = days_smoothing - 1
             repl_dict['tablename_to_bidder_rps'] = f'DAS_bidder_rps{name}'
@@ -109,14 +162,14 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
         # get_bq_data(query)
 
 
-def main_plot_daily_config(last_date, days):
+def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session_count, min_individual_bidder_session_count):
 
     for days_smoothing in [1, 7]:
         if days < days_smoothing:
             continue
 
         for dims_list in config_hierarchy:
-            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing)
+            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             tablename = f'DAS_bidder_rps{name}_bc{bidder_count}'
             query = (f'select bidder, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
                          f'from `{project_id}.DAS_increment.{tablename}` '
@@ -178,7 +231,8 @@ def main_plot_daily_config(last_date, days):
                         pdf.savefig()
 
 
-def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
+def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
+                        min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
 
     assert strategy in ['DAS', 'YM_daily']
 
@@ -188,11 +242,15 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
         for days_match in days_match_list:
             print(f'doing: strategy: {strategy}, days_smoothing: {days_smoothing}, days_match: {days_match}')
 
+            tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)
             repl_dict_1 = {'project_id': project_id,
-                           'tablename_ext_DAS_config': f'{last_date.strftime("%Y-%m-%d")}_{days}_1_ds{days_smoothing}_bc{bidder_count}',
+                           'tablename_ext_DAS_config': f'{tablename_ext}_bc{bidder_count}',
                            'tablename_ext_session_stats': f'{last_date.strftime("%Y-%m-%d")}_{days}_1',
                            'days_match': days_match,
-                           'tablename_to': f'{strategy}_bidders_{last_date.strftime("%Y-%m-%d")}_{days}_1_ds{days_smoothing}_bm{days_match}_bc{bidder_count}'}
+                           'tablename_to': f'{strategy}_bidders_{tablename_ext}_bm{days_match}_bc{bidder_count}'}
+
+            # tablename_ext = get_tablename_ext(last_date, days, 10000, 200, days_smoothing)
+            # repl_dict_1['tablename_ext_DAS_config'] = f'{tablename_ext}_bc{bidder_count}'
 
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
             get_bq_data(query, repl_dict_1)
@@ -210,11 +268,13 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
     df_rev = pd.concat(df_list, axis=1)
     return df_rev
 
-def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7]):
+def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
+                            min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
 
     df_rev_list = []
     for strategy in strategy_list:
-        df_rev_list.append(main_create_bidders(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list))
+        df_rev_list.append(main_create_bidders(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list,
+                                               min_all_bidder_session_count, min_individual_bidder_session_count))
 
     df_rev = pd.concat(df_rev_list, axis=1)
     tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
@@ -229,29 +289,33 @@ def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_da
     return perc_uplift_rev
     g = 0
 def main_investiagte(last_date, days):
-    min_all_bidder_session_count = 100000
-    min_individual_bidder_session_count = 1000
     strategy_list = ['YM_daily', 'DAS']
     days_smoothing_list = [1]#, 7]
-    days_match_list = [1]#[0, 1, 2, 7]
+    days_match_list = [1]#0, 1, 2, 7]
 
     res_dict = {}
-    for bidder_count in [5, 8, 10]:
-        main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list, min_all_bidder_session_count,
-                                  min_individual_bidder_session_count)
-        res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list)
+    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (100000, 200)]:
+        for bidder_count in [5]:#, 8, 10]:
+            main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
+                                      min_all_bidder_session_count, min_individual_bidder_session_count)
+            res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list,
+                                          min_all_bidder_session_count, min_individual_bidder_session_count)
 
-        res_dict[f'{min_all_bidder_session_count}_{min_individual_bidder_session_count}_{b}'] = res
+            res_dict[f'{min_all_bidder_session_count}_{min_individual_bidder_session_count}_{bidder_count}'] = res
 
     res_all = pd.DataFrame(res_dict)
     res_all.to_csv('plots/res_all.csv')
 
 if __name__ == "__main__":
+    # last_date = dt.date(2024, 10, 9)
+    # days = 6
+    # main_create_session_stats(last_date, days)
+
+
     last_date = dt.date(2024, 10, 10)
     days = 20
-#    main_create_session_stats(last_date, days)
-
-    main_investiagte(last_date, days)
+    main_create_session_stats(last_date, days)
+    # #main_investiagte(last_date, days)
 
     # bidder_count = 10
     # strategy_list = ['YM_daily', 'DAS']

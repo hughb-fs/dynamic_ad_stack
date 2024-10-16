@@ -16,19 +16,19 @@ cohort_bidders as (
         coalesce(l7.bidders, l6.bidders, l5.bidders, l4.bidders, l3.bidders, l2.bidders, l1.bidders, l0.bidders) bidders
 
     from cohorts c
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_domain_device_category_rtt_category_{tablename_ext_DAS_config}` l7
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dom_dev_rtt_{tablename_ext_DAS_config}` l7
         using (date, geo_continent, country_code, domain, device_category, rtt_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_domain_device_category_{tablename_ext_DAS_config}` l6
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dom_dev_{tablename_ext_DAS_config}` l6
         using (date, geo_continent, country_code, domain, device_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_domain_{tablename_ext_DAS_config}` l5
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dom_{tablename_ext_DAS_config}` l5
         using (date, geo_continent, country_code, domain)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_device_category_rtt_category_{tablename_ext_DAS_config}` l4
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dev_rtt_cat_{tablename_ext_DAS_config}` l4
         using (date, geo_continent, country_code, device_category, rtt_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_device_category_{tablename_ext_DAS_config}` l3
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_dev_{tablename_ext_DAS_config}` l3
         using (date, geo_continent, country_code, device_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_country_code_{tablename_ext_DAS_config}` l2
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_cou_{tablename_ext_DAS_config}` l2
         using (date, geo_continent, country_code)
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_{tablename_ext_DAS_config}` l1
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_{tablename_ext_DAS_config}` l1
         using (date, geo_continent)
     left join `streamamp-qa-239417.DAS_increment.DAS_config_{tablename_ext_DAS_config}` l0
         using (date)

@@ -16,7 +16,7 @@ cohort_bidders as (
         coalesce(l1.bidders, l0.bidders) bidders
 
     from cohorts c
-    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_continent_{tablename_ext_DAS_config}` l1
+    left join `streamamp-qa-239417.DAS_increment.DAS_config_geo_{tablename_ext_DAS_config}` l1
         using (date, geo_continent)
     left join `streamamp-qa-239417.DAS_increment.DAS_config_{tablename_ext_DAS_config}` l0
         using (date)

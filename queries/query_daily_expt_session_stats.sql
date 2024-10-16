@@ -1,7 +1,9 @@
 
-DECLARE dates ARRAY<DATE> DEFAULT GENERATE_DATE_ARRAY(DATE_SUB('{processing_date}', INTERVAL {days_back_start} DAY), DATE_SUB('{processing_date}', INTERVAL {days_back_end} DAY));
+DECLARE first_date DATE DEFAULT DATE_SUB('{processing_date}', INTERVAL {days_back_start} DAY);
+DECLARE last_date DATE DEFAULT DATE_SUB('{processing_date}', INTERVAL {days_back_end} DAY);
+DECLARE dates ARRAY<DATE> DEFAULT GENERATE_DATE_ARRAY(first_date, DATE_ADD(last_date, INTERVAL 1 DAY));
 
-CREATE OR REPLACE TABLE `{project_id}.DAS_increment.daily_bidder_domain_expt_session_stats_unexpanded_{aer_to_bwr_join_type}_{processing_date}_{days_back_start}_{days_back_end}`
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{expt_tablename_unexpanded}`
     OPTIONS (
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
@@ -87,10 +89,11 @@ session_agg AS (
     GROUP BY
         1, 2, 3, 4, 5, 6, 7
 )
-select * from session_agg;
+select * from session_agg
+where (first_date <= date and date <= last_date);
 
 
-CREATE OR REPLACE TABLE `{project_id}.DAS_increment.daily_bidder_domain_expt_session_stats_{aer_to_bwr_join_type}_{processing_date}_{days_back_start}_{days_back_end}`
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{expt_tablename_expanded}`
     OPTIONS (
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
@@ -99,7 +102,7 @@ with expanded AS (
     SELECT offset+1 bidder_position, * except (arr, offset)
     FROM (
         SELECT SPLIT(fs_clientservermask, '') as arr, *
-        FROM `{project_id}.DAS_increment.daily_bidder_domain_expt_session_stats_unexpanded_{aer_to_bwr_join_type}_{processing_date}_{days_back_start}_{days_back_end}`
+        FROM `{project_id}.DAS_increment.{expt_tablename_unexpanded}`
     ) AS mask, mask.arr AS mask_value WITH OFFSET AS offset
 )
 

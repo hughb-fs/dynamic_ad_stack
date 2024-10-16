@@ -11,19 +11,19 @@ with t1 as (
 
     from `streamamp-qa-239417.DAS_increment.{tablename_bidders}` c
 
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_domain_device_category_rtt_category_{tablename_ext_bidder_rps}` l7
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_dom_dev_rtt_{tablename_ext_bidder_rps}` l7
         using (date, geo_continent, country_code, domain, device_category, rtt_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_domain_device_category_{tablename_ext_bidder_rps}` l6
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_dom_dev_{tablename_ext_bidder_rps}` l6
         using (date, geo_continent, country_code, domain, device_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_domain_{tablename_ext_bidder_rps}` l5
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_dom_{tablename_ext_bidder_rps}` l5
         using (date, geo_continent, country_code, domain)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_device_category_rtt_category_{tablename_ext_bidder_rps}` l4
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_dev_rtt_{tablename_ext_bidder_rps}` l4
         using (date, geo_continent, country_code, device_category, rtt_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_device_category_{tablename_ext_bidder_rps}` l3
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_dev_{tablename_ext_bidder_rps}` l3
         using (date, geo_continent, country_code, device_category)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_country_code_{tablename_ext_bidder_rps}` l2
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_cou_{tablename_ext_bidder_rps}` l2
         using (date, geo_continent, country_code)
-    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_continent_{tablename_ext_bidder_rps}` l1
+    left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_geo_{tablename_ext_bidder_rps}` l1
         using (date, geo_continent)
     left join `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_{tablename_ext_bidder_rps}` l0
         using (date)
