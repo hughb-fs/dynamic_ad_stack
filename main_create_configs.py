@@ -16,9 +16,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 
-config_path = '../config.ini'
-config = configparser.ConfigParser()
-config.read(config_path)
+# config_path = '../config.ini'
+# config = configparser.ConfigParser()
+# config.read(config_path)
 
 project_id = "streamamp-qa-239417"
 client = bigquery.Client(project=project_id)
@@ -110,9 +110,12 @@ def get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individ
                       days_smoothing):
     return f"{last_date.strftime("%Y-%m-%d")}_{days}_mab{min_all_bidder_session_count}_mib{min_individual_bidder_session_count}_ds{days_smoothing}"
 
+def get_dims(dims_list):
+    return ''.join([', ' + d for d in dims_list])
+
 def get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
                       min_individual_bidder_session_count):
-    dims = ''.join([', ' + d for d in dims_list])
+    dims = get_dims(dims_list)
 
     tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count,
                                       min_individual_bidder_session_count, days_smoothing)
@@ -126,7 +129,6 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
     repl_dict = {'project_id': project_id,
                  'tablename_from': get_daily_data_tablename('expt', True, last_date, days),
                  'processing_date': processing_date.strftime("%Y-%m-%d"),
-                 'days_back_end': 1,
                  'min_all_bidder_session_count': min_all_bidder_session_count,
                  'min_individual_bidder_session_count': min_individual_bidder_session_count}
 
@@ -148,7 +150,7 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
 
-            query = open(os.path.join(sys.path[0], 'queries/query_create_config.sql'), "r").read()
+            query = open(os.path.join(sys.path[0], 'queries/query_createbidder_rps_and_DAS_config.sql'), "r").read()
             get_bq_data(query, repl_dict)
 
             # select_dims = ", ".join([d if d in dims_list else f"'default' {d}" for d in all_dims])
@@ -254,8 +256,8 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
             get_bq_data(query, repl_dict_1)
 
-            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, 1)
-            #tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+            #tablename_ext_bidder_rps = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, 1)
+            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
             repl_dict_2 = {'project_id': project_id,
                            'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
                            'tablename_bidders': repl_dict_1['tablename_to'],
@@ -268,6 +270,58 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
 
     df_rev = pd.concat(df_list, axis=1)
     return df_rev
+
+
+def main_create_YM_configs(last_date, days, bidder_count=10):
+
+    repl_dict = {'project_id': project_id,
+                 'tablename_expt_from': get_daily_data_tablename('expt', True, last_date, days),
+                 'tablename_opt_from': get_daily_data_tablename('opt', True, last_date, days)}
+
+    YM_strategy_name = 'YM_week'
+    YM_date_granularity = 'week'
+    YM_config_hierarchy = [([], 10),
+                           (['geo_continent'], 10),
+                           (['geo_continent', 'country_code'], 5),
+                           (['domain'], 10)]
+
+    for config_level, (dims_list, max_cohort_count) in enumerate(YM_config_hierarchy):
+        dims = get_dims(dims_list)
+        repl_dict['dims'] = dims
+        repl_dict['tablename_to_config'] = f'{YM_strategy_name}{dims.replace(", ", "_")}_{last_date}_{days}_bc{bidder_count}'
+        repl_dict['bidder_count'] = bidder_count
+        repl_dict['config_level'] = config_level
+        repl_dict['date_granularity'] = YM_date_granularity
+        repl_dict['max_cohort_count'] = max_cohort_count
+
+        print(f'creating: {repl_dict['tablename_to_config']}')
+
+        query = open(os.path.join(sys.path[0], 'queries/query_create_YM_config.sql'), "r").read()
+        #get_bq_data(query, repl_dict)
+
+    repl_dict_1 = {'project_id': project_id,
+                 'tablename_ext_session_stats': f'{last_date}_{days}',
+                 'tablename_ext_YM_config': f'{last_date}_{days}_bc{bidder_count}',
+                 'date_granularity': YM_date_granularity,
+                 'YM_strategy_name': YM_strategy_name,
+                 'tablename_to_YM_bidders': f'{YM_strategy_name}_bidders_{last_date}_{days}_bc{bidder_count}'}
+
+    print(f'creating: {repl_dict_1['tablename_to_YM_bidders']}')
+    query = open(os.path.join(sys.path[0], 'queries/query_create_YM_bidders_from_configs_4_levels.sql'), "r").read()
+    #get_bq_data(query, repl_dict_1)
+
+    tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+    repl_dict_2 = {'project_id': project_id,
+                   'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
+                   'tablename_bidders': repl_dict_1['tablename_to_YM_bidders'],
+                   'tablename_to': f'revenue_{repl_dict_1['tablename_to_YM_bidders']}'}
+
+    query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
+    df = get_bq_data(query, repl_dict_2)
+    df = df.set_index('date').rename(columns={'revenue': f'rev_{YM_strategy_name}'})
+
+    j = 0
+
 
 def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
                             min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
@@ -295,10 +349,12 @@ def main_investigate(last_date, days):
     days_match_list = [0, 1, 2, 7]
 
     res_dict = {}
-    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (10000, 200)]:
+    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
         for bidder_count in [5, 8, 10]:
             main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
                                       min_all_bidder_session_count, min_individual_bidder_session_count)
+
+
             res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list,
                                           min_all_bidder_session_count, min_individual_bidder_session_count)
 
@@ -309,13 +365,13 @@ def main_investigate(last_date, days):
 
 if __name__ == "__main__":
     # last_date = dt.date(2024, 10, 10)
-    # days = 120
+    # days = 190
     # main_create_session_stats(last_date, days)
 
     last_date = dt.date(2024, 10, 10)
     days = 20
-    #main_create_session_stats(last_date, days)
-    main_investigate(last_date, days)
+#    main_investigate(last_date, days)
+    main_create_YM_configs(last_date, days)
 
     # bidder_count = 10
     # strategy_list = ['YM_daily', 'DAS']
