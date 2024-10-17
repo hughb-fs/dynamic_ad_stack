@@ -40,11 +40,5 @@ sum(bidder_rps.rps) rps_sum,
 from t1
 cross join unnest(t1.bidders) as bidders_strategy
 join unnest(t1.bidder_rps) as bidder_rps on bidders_strategy=bidder_rps.bidder
-group by 1, 2, 3, 4, 5, 6;
-
-select date, sum(revenue) revenue
-from `{project_id}.DAS_increment.{tablename_to}`
-group by 1
-order by 1
-
+group by 1, 2, 3, 4, 5, 6
 

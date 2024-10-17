@@ -132,13 +132,10 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
                  'min_all_bidder_session_count': min_all_bidder_session_count,
                  'min_individual_bidder_session_count': min_individual_bidder_session_count}
 
-    # all_dims = list(set(sum(config_hierarchy, [])))
-
     for days_smoothing in days_smoothing_list:
         if days < days_smoothing:
             continue
 
-        select_for_union_list = []
         for config_level, dims_list in enumerate(config_hierarchy):
             dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             repl_dict['dims'] = dims
@@ -150,18 +147,8 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
 
-            query = open(os.path.join(sys.path[0], 'queries/query_createbidder_rps_and_DAS_config.sql'), "r").read()
+            query = open(os.path.join(sys.path[0], 'queries/query_create_bidder_rps_and_DAS_config.sql'), "r").read()
             get_bq_data(query, repl_dict)
-
-            # select_dims = ", ".join([d if d in dims_list else f"'default' {d}" for d in all_dims])
-            # select_for_union = (f'(select date, {select_dims}, bidders, rps, {config_level} config_level '
-            #                     f'from `{project_id}.DAS_increment.{repl_dict['tablename_to_config']}`)')
-            # select_for_union_list.append(select_for_union)
-
-        # query = (f'CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_combined_uncompressed_{last_date.strftime("%Y-%m-%d")}_{days}_1_{days_smoothing}` '
-        #          f'OPTIONS (expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)) '
-        #          f'AS {" union all ".join(select_for_union_list)}')
-        # get_bq_data(query)
 
 
 def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session_count, min_individual_bidder_session_count):
@@ -174,8 +161,8 @@ def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session
             dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             tablename = f'DAS_bidder_rps{name}_bc{bidder_count}'
             query = (f'select bidder, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
-                         f'from `{project_id}.DAS_increment.{tablename}` '
-                         f'group by 1, 2')
+                     f'from `{project_id}.DAS_increment.{tablename}` '
+                     f'group by 1, 2')
 
             df = get_bq_data(query)
             df['revenue'] = df['session_count'] * df['rps']
@@ -233,8 +220,8 @@ def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session
                         pdf.savefig()
 
 
-def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
-                        min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
+def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
+                        min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000, DAS_calcs=True):
 
     assert strategy in ['DAS', 'YM_daily']
 
@@ -254,9 +241,9 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
                            'tablename_to': f'{strategy}_bidders_{tablename_ext}_bm{days_match}_bc{bidder_count}'}
 
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
-            get_bq_data(query, repl_dict_1)
+            if DAS_calcs:
+                get_bq_data(query, repl_dict_1)
 
-            #tablename_ext_bidder_rps = get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, 1)
             tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
             repl_dict_2 = {'project_id': project_id,
                            'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
@@ -264,15 +251,18 @@ def main_create_bidders(last_date, days, strategy, bidder_count=10, days_smoothi
                            'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
 
             query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-            df = get_bq_data(query, repl_dict_2)
-            df = df.set_index('date').rename(columns={'revenue': f'rev_{strategy}_{days_smoothing}_{days_match}'})
+            if DAS_calcs:
+                get_bq_data(query, repl_dict_2)
+
+            df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
+            df = df.set_index('date').rename(columns={'revenue': 
+                f'rev_{strategy}_{days_smoothing}_{days_match}_{min_all_bidder_session_count}_{min_individual_bidder_session_count}'})
             df_list.append(df)
 
-    df_rev = pd.concat(df_list, axis=1)
-    return df_rev
+    return df_list
 
 
-def main_create_YM_configs(last_date, days, bidder_count=10):
+def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_calcs=True):
 
     repl_dict = {'project_id': project_id,
                  'tablename_expt_from': get_daily_data_tablename('expt', True, last_date, days),
@@ -297,7 +287,8 @@ def main_create_YM_configs(last_date, days, bidder_count=10):
         print(f'creating: {repl_dict['tablename_to_config']}')
 
         query = open(os.path.join(sys.path[0], 'queries/query_create_YM_config.sql'), "r").read()
-        #get_bq_data(query, repl_dict)
+        if YM_calcs:
+            get_bq_data(query, repl_dict)
 
     repl_dict_1 = {'project_id': project_id,
                  'tablename_ext_session_stats': f'{last_date}_{days}',
@@ -308,7 +299,8 @@ def main_create_YM_configs(last_date, days, bidder_count=10):
 
     print(f'creating: {repl_dict_1['tablename_to_YM_bidders']}')
     query = open(os.path.join(sys.path[0], 'queries/query_create_YM_bidders_from_configs_4_levels.sql'), "r").read()
-    #get_bq_data(query, repl_dict_1)
+    if YM_calcs:
+        get_bq_data(query, repl_dict_1)
 
     tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
     repl_dict_2 = {'project_id': project_id,
@@ -316,52 +308,48 @@ def main_create_YM_configs(last_date, days, bidder_count=10):
                    'tablename_bidders': repl_dict_1['tablename_to_YM_bidders'],
                    'tablename_to': f'revenue_{repl_dict_1['tablename_to_YM_bidders']}'}
 
+    print(f'creating: {repl_dict_2['tablename_to']}')
     query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-    df = get_bq_data(query, repl_dict_2)
+    if YM_calcs:
+        get_bq_data(query, repl_dict_2)
+
+    df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
     df = df.set_index('date').rename(columns={'revenue': f'rev_{YM_strategy_name}'})
+    
+    return [df]
+    
+def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
 
-    j = 0
-
-
-def main_compare_strategies(last_date, days, bidder_count, strategy_list=['YM_daily', 'DAS'], days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
-                            min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
-
-    df_rev_list = []
-    for strategy in strategy_list:
-        df_rev_list.append(main_create_bidders(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list,
-                                               min_all_bidder_session_count, min_individual_bidder_session_count))
-
-    df_rev = pd.concat(df_rev_list, axis=1)
-    tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
-    perc_uplift_rev = (tot_rev / tot_rev['rev_DAS_1_1'] - 1) * 100
-    rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
-    df_rev = df_rev.rename(columns=rename_dict)
-
-    fig, ax = plt.subplots(figsize=(12, 9))
-    df_rev.plot(ax=ax)
-    fig.savefig(f'plots/sim_{bidder_count}.png')
-
-    return perc_uplift_rev
-    g = 0
-def main_investigate(last_date, days):
-    strategy_list = ['YM_daily', 'DAS']
+    DAS_strategy_list = ['DAS', 'YM_daily']
     days_smoothing_list = [1, 7]
     days_match_list = [0, 1, 2, 7]
 
-    res_dict = {}
-    for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
-        for bidder_count in [5, 8, 10]:
-            main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
-                                      min_all_bidder_session_count, min_individual_bidder_session_count)
-
-
-            res = main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list,
+    perc_uplift_rev_dict = {}
+    for bidder_count in [5, 8, 10]:
+        res_list = []
+        for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
+            if DAS_calcs:
+                main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
                                           min_all_bidder_session_count, min_individual_bidder_session_count)
 
-            res_dict[f'{min_all_bidder_session_count}_{min_individual_bidder_session_count}_{bidder_count}'] = res
+            for strategy in DAS_strategy_list:
+                res_list += create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list,
+                                          min_all_bidder_session_count, min_individual_bidder_session_count, DAS_calcs)
 
-    res_all = pd.DataFrame(res_dict)
-    res_all.to_csv('plots/res_all.csv')
+        res_list += create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count, YM_calcs)
+
+        df_rev = pd.concat(res_list, axis=1)
+        tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
+        perc_uplift_rev = (tot_rev / tot_rev[f'rev_DAS_1_1_10000_200'] - 1) * 100
+        rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
+        df_rev = df_rev.rename(columns=rename_dict)
+
+        fig, ax = plt.subplots(figsize=(12, 9))
+        df_rev.plot(ax=ax, title=f'bidder count: {bidder_count}')
+        fig.savefig(f'plots/sim_{bidder_count}.png')
+        perc_uplift_rev_dict[f'bidder_count_{bidder_count}'] = perc_uplift_rev
+
+    pd.DataFrame(perc_uplift_rev_dict).to_csv('plots/res_all.csv')
 
 if __name__ == "__main__":
     # last_date = dt.date(2024, 10, 10)
@@ -370,8 +358,8 @@ if __name__ == "__main__":
 
     last_date = dt.date(2024, 10, 10)
     days = 20
-#    main_investigate(last_date, days)
-    main_create_YM_configs(last_date, days)
+    main_investigate(last_date, days)
+#    create_YM_strategy_bidders_and_revenue(last_date, days)
 
     # bidder_count = 10
     # strategy_list = ['YM_daily', 'DAS']
