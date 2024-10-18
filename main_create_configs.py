@@ -113,13 +113,16 @@ def get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individ
 def get_dims(dims_list):
     return ''.join([', ' + d for d in dims_list])
 
+def get_dims_name(dims_list):
+    return ''.join(['_' + d[:3] for d in dims_list])
+
 def get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
                       min_individual_bidder_session_count):
     dims = get_dims(dims_list)
 
     tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count,
                                       min_individual_bidder_session_count, days_smoothing)
-    name = f"{''.join(['_' + d[:3] for d in dims_list])}_{tablename_ext}"
+    name = f"{get_dims_name(dims_list)}_{tablename_ext}"
     return dims, name
 
 def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1, 7],
@@ -268,55 +271,70 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
                  'tablename_expt_from': get_daily_data_tablename('expt', True, last_date, days),
                  'tablename_opt_from': get_daily_data_tablename('opt', True, last_date, days)}
 
-    YM_strategy_name = 'YM_week'
-    YM_date_granularity = 'week'
-    YM_config_hierarchy = [([], 10),
+    # YM strategies: (name, date_granularity, dims_list: (dims, max_cohort_count))
+    YM_strategy_list = [('YM_week', 'week', [([], 10),
                            (['geo_continent'], 10),
                            (['geo_continent', 'country_code'], 5),
-                           (['domain'], 10)]
+                           (['domain'], 10)]),
+                        ('YM_month', 'month', [([], 10),
+                                               (['geo_continent'], 10),
+                                               (['geo_continent', 'country_code'], 30),
+                                               (['geo_continent', 'country_code', 'device_category'], 30),
+                                               (['domain'], 100),
+                                               (['geo_continent', 'country_code', 'domain'], 100)]),
+                        ('YM_quarter', 'quarter', [([], 10),
+                                                   (['geo_continent'], 10),
+                                                   (['geo_continent', 'country_code'], 50),
+                                                   (['geo_continent', 'country_code', 'device_category'], 50),
+                                                   (['domain'], 200),
+                                                   (['geo_continent', 'country_code', 'domain'], 200)])
+                        ]
 
-    for config_level, (dims_list, max_cohort_count) in enumerate(YM_config_hierarchy):
-        dims = get_dims(dims_list)
-        repl_dict['dims'] = dims
-        repl_dict['tablename_to_config'] = f'{YM_strategy_name}{dims.replace(", ", "_")}_{last_date}_{days}_bc{bidder_count}'
-        repl_dict['bidder_count'] = bidder_count
-        repl_dict['config_level'] = config_level
-        repl_dict['date_granularity'] = YM_date_granularity
-        repl_dict['max_cohort_count'] = max_cohort_count
+    df_list = []
+    for YM_strategy_name, YM_date_granularity, YM_config_hierarchy in YM_strategy_list:
 
-        print(f'creating: {repl_dict['tablename_to_config']}')
+        for config_level, (dims_list, max_cohort_count) in enumerate(YM_config_hierarchy):
+            repl_dict['dims'] = get_dims(dims_list)
+            repl_dict['tablename_to_config'] = f'{YM_strategy_name}{get_dims_name(dims_list)}_{last_date}_{days}_bc{bidder_count}'
+            repl_dict['bidder_count'] = bidder_count
+            repl_dict['config_level'] = config_level
+            repl_dict['date_granularity'] = YM_date_granularity
+            repl_dict['max_cohort_count'] = max_cohort_count
 
-        query = open(os.path.join(sys.path[0], 'queries/query_create_YM_config.sql'), "r").read()
+            print(f'creating: {repl_dict['tablename_to_config']}')
+
+            query = open(os.path.join(sys.path[0], 'queries/query_create_YM_config.sql'), "r").read()
+            if YM_calcs:
+                get_bq_data(query, repl_dict)
+
+        repl_dict_1 = {'project_id': project_id,
+                       'tablename_ext_session_stats': f'{last_date}_{days}',
+                       'tablename_ext_YM_config': f'{last_date}_{days}_bc{bidder_count}',
+                       'date_granularity': YM_date_granularity,
+                       'YM_strategy_name': YM_strategy_name,
+                       'tablename_to_YM_bidders': f'{YM_strategy_name}_bidders_{last_date}_{days}_bc{bidder_count}'}
+
+        print(f'creating: {repl_dict_1['tablename_to_YM_bidders']}')
+        query = open(os.path.join(sys.path[0], f'queries/query_create_YM_bidders_from_configs_{len(YM_config_hierarchy)}_levels.sql'), "r").read()
         if YM_calcs:
-            get_bq_data(query, repl_dict)
+            get_bq_data(query, repl_dict_1)
 
-    repl_dict_1 = {'project_id': project_id,
-                 'tablename_ext_session_stats': f'{last_date}_{days}',
-                 'tablename_ext_YM_config': f'{last_date}_{days}_bc{bidder_count}',
-                 'date_granularity': YM_date_granularity,
-                 'YM_strategy_name': YM_strategy_name,
-                 'tablename_to_YM_bidders': f'{YM_strategy_name}_bidders_{last_date}_{days}_bc{bidder_count}'}
+        tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+        repl_dict_2 = {'project_id': project_id,
+                       'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
+                       'tablename_bidders': repl_dict_1['tablename_to_YM_bidders'],
+                       'tablename_to': f'revenue_{repl_dict_1['tablename_to_YM_bidders']}'}
 
-    print(f'creating: {repl_dict_1['tablename_to_YM_bidders']}')
-    query = open(os.path.join(sys.path[0], 'queries/query_create_YM_bidders_from_configs_4_levels.sql'), "r").read()
-    if YM_calcs:
-        get_bq_data(query, repl_dict_1)
+        print(f'creating: {repl_dict_2['tablename_to']}')
+        query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
+        if YM_calcs:
+            get_bq_data(query, repl_dict_2)
 
-    tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
-    repl_dict_2 = {'project_id': project_id,
-                   'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
-                   'tablename_bidders': repl_dict_1['tablename_to_YM_bidders'],
-                   'tablename_to': f'revenue_{repl_dict_1['tablename_to_YM_bidders']}'}
+        df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
+        df = df.set_index('date').rename(columns={'revenue': f'rev_{YM_strategy_name}'})
+        df_list.append(df)
 
-    print(f'creating: {repl_dict_2['tablename_to']}')
-    query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-    if YM_calcs:
-        get_bq_data(query, repl_dict_2)
-
-    df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
-    df = df.set_index('date').rename(columns={'revenue': f'rev_{YM_strategy_name}'})
-    
-    return [df]
+    return df_list
     
 def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
 
@@ -339,6 +357,7 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
         res_list += create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count, YM_calcs)
 
         df_rev = pd.concat(res_list, axis=1)
+        df_rev.to_csv('plots/df_rev_YM.csv')
         tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
         perc_uplift_rev = (tot_rev / tot_rev[f'rev_DAS_1_1_10000_200'] - 1) * 100
         rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
@@ -352,21 +371,11 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
     pd.DataFrame(perc_uplift_rev_dict).to_csv('plots/res_all.csv')
 
 if __name__ == "__main__":
-    # last_date = dt.date(2024, 10, 10)
-    # days = 190
-    # main_create_session_stats(last_date, days)
-
     last_date = dt.date(2024, 10, 10)
-    days = 20
-    main_investigate(last_date, days)
-#    create_YM_strategy_bidders_and_revenue(last_date, days)
+    days = 190
+    #days = 20
 
-    # bidder_count = 10
-    # strategy_list = ['YM_daily', 'DAS']
-    # days_smoothing_list = [1, 7]
-    # days_match_list = [0, 1, 2, 7]
+    # main_create_session_stats(last_date, days)
+    main_investigate(last_date, days, False, False)
 
-#    main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list)
-    # main_plot_daily_config(last_date, days)
-    # main_compare_strategies(last_date, days, bidder_count, strategy_list, days_smoothing_list, days_match_list)
 

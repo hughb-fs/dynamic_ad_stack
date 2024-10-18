@@ -12,12 +12,16 @@ with cohorts as (
 
 cohort_bidders as (
     select c.*,
-        coalesce(l3.config_level, l2.config_level, l1.config_level, l0.config_level) config_level,
-        coalesce(l3.bidders, l2.bidders, l1.bidders, l0.bidders) bidders
+        coalesce(l5.config_level, l4.config_level, l3.config_level, l2.config_level, l1.config_level, l0.config_level) config_level,
+        coalesce(l5.bidders, l4.bidders, l3.bidders, l2.bidders, l1.bidders, l0.bidders) bidders
 
     from cohorts c
-    left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_dom_{tablename_ext_YM_config}` l3
+    left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_geo_cou_dom_{tablename_ext_YM_config}` l5
+        using (date, geo_continent, country_code, domain)
+    left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_dom_{tablename_ext_YM_config}` l4
         using (date, domain)
+    left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_geo_cou_dev_{tablename_ext_YM_config}` l3
+        using (date, geo_continent, country_code, device_category)
     left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_geo_cou_{tablename_ext_YM_config}` l2
         using (date, geo_continent, country_code)
     left join `streamamp-qa-239417.DAS_increment.{YM_strategy_name}_geo_{tablename_ext_YM_config}` l1
