@@ -193,7 +193,9 @@ def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session
 
 
 def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
-                        min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000, DAS_calcs=True):
+                        min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000,
+                        rev_calc_min_all_bidder_session_count=10000, rev_calc_min_individual_bidder_session_count=200,
+                                            DAS_calcs=True):
 
     assert strategy in ['DAS', 'YM_daily']
 
@@ -216,14 +218,14 @@ def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_co
             if DAS_calcs:
                 get_bq_data(query, repl_dict_1)
 
-            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+            tablename_ext_bidder_rps = get_tablename_ext(last_date, days, rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count, 1)
             repl_dict_2 = {'project_id': project_id,
                            'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
                            'tablename_bidders': repl_dict_1['tablename_to'],
                            'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
 
             query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-            if DAS_calcs:
+            if True:#DAS_calcs:
                 get_bq_data(query, repl_dict_2)
 
             df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
@@ -234,7 +236,8 @@ def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_co
     return df_list
 
 
-def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_calcs=True):
+def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_calcs=True,
+                                           rev_calc_min_all_bidder_session_count=10000, rev_calc_min_individual_bidder_session_count=200):
 
     repl_dict = {'project_id': project_id,
                  'tablename_expt_from': get_daily_data_tablename('expt', True, last_date, days),
@@ -288,7 +291,7 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
         if YM_calcs:
             get_bq_data(query, repl_dict_1)
 
-        tablename_ext_bidder_rps = get_tablename_ext(last_date, days, 10000, 200, 1)
+        tablename_ext_bidder_rps = get_tablename_ext(last_date, days, rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count, 1)
         repl_dict_2 = {'project_id': project_id,
                        'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
                        'tablename_bidders': repl_dict_1['tablename_to_YM_bidders'],
@@ -296,7 +299,7 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
 
         print(f'creating: {repl_dict_2['tablename_to']}')
         query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-        if YM_calcs:
+        if True:#YM_calcs:
             get_bq_data(query, repl_dict_2)
 
         df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
@@ -311,33 +314,38 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
     days_smoothing_list = [1, 7]
     days_match_list = [0, 1, 2, 7]
 
-    perc_uplift_rev_dict = {}
-    for bidder_count in [5, 8, 9, 10]:
-        res_list = []
-        for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
-            if DAS_calcs:
-                main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
-                                          min_all_bidder_session_count, min_individual_bidder_session_count)
+    for (rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
 
-            for strategy in DAS_strategy_list:
-                res_list += create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list,
-                                          min_all_bidder_session_count, min_individual_bidder_session_count, DAS_calcs)
+        perc_uplift_rev_dict = {}
+        for bidder_count in [5, 8, 9, 10]:
+            res_list = []
+            for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
+                if DAS_calcs:
+                    main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
+                                              min_all_bidder_session_count, min_individual_bidder_session_count)
 
-        res_list += create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count, YM_calcs)
+                for strategy in DAS_strategy_list:
+                    res_list += create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count, days_smoothing_list, days_match_list,
+                                              min_all_bidder_session_count, min_individual_bidder_session_count,
+                                            rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count, DAS_calcs)
 
-        df_rev = pd.concat(res_list, axis=1)
-        df_rev.to_csv('plots/df_rev_YM.csv')
-        tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
-        perc_uplift_rev = (tot_rev / tot_rev[f'rev_DAS_1_1_10000_200'] - 1) * 100
-        rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
-        df_rev = df_rev.rename(columns=rename_dict)
+            res_list += create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count, YM_calcs,
+                                                               rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count)
 
-        fig, ax = plt.subplots(figsize=(12, 9))
-        df_rev.plot(ax=ax, title=f'bidder count: {bidder_count}')
-        fig.savefig(f'plots/sim_{bidder_count}.png')
-        perc_uplift_rev_dict[f'bidder_count_{bidder_count}'] = perc_uplift_rev
+            df_rev = pd.concat(res_list, axis=1)
+            df_rev.to_csv(f'plots/df_rev_{bidder_count}_rev_calc_{rev_calc_min_all_bidder_session_count}_{rev_calc_min_individual_bidder_session_count}.csv')
+            tot_rev = df_rev.loc[~df_rev.isna().any(axis=1)].sum()
 
-    pd.DataFrame(perc_uplift_rev_dict).to_csv('plots/res_all.csv')
+            perc_uplift_rev = (tot_rev / tot_rev[f'rev_DAS_1_1_{rev_calc_min_all_bidder_session_count}_{rev_calc_min_individual_bidder_session_count}'] - 1) * 100
+            rename_dict = dict([(n, f'{n}: {v:0.1f}%') for n, v in dict(perc_uplift_rev).items()])
+            df_rev = df_rev.rename(columns=rename_dict)
+
+            fig, ax = plt.subplots(figsize=(12, 9))
+            df_rev.plot(ax=ax, title=f'bidder count: {bidder_count}')
+            fig.savefig(f'plots/sim_{bidder_count}_rev_calc_{rev_calc_min_all_bidder_session_count}_{rev_calc_min_individual_bidder_session_count}.png')
+            perc_uplift_rev_dict[f'bidder_count_{bidder_count}'] = perc_uplift_rev
+
+        pd.DataFrame(perc_uplift_rev_dict).to_csv(f'plots/res_all_rev_calc_{rev_calc_min_all_bidder_session_count}_{rev_calc_min_individual_bidder_session_count}.csv')
 
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
