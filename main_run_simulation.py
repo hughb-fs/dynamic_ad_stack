@@ -12,6 +12,7 @@ import plotly.express as px
 import kaleido
 from scipy.stats import linregress
 from matplotlib.backends.backend_pdf import PdfPages
+from naming_utils import *
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
@@ -38,19 +39,6 @@ def get_bq_data(query, replacement_dict={}):
     for k, v in replacement_dict.items():
         query = query.replace("{" + k + "}", str(v))
     return client.query(query).result().to_dataframe(bqstorage_client=bqstorageclient, progress_bar_type='tqdm')
-
-def get_daily_data_tablename(expt_or_opt, expanded, last_date, days, aer_to_bwr_join_type='join', partial=False):
-
-    if expt_or_opt == "expt":
-        base = f'daily_bidder_expt_session_stats_{aer_to_bwr_join_type}_{last_date}_{days}{'_partial' if partial else ''}'
-        if expanded:
-            return base + "_expanded"
-        else:
-            return base + "_unexpanded"
-    elif expt_or_opt == "opt":
-        return f'daily_session_stats_{last_date}_{days}{'_partial' if partial else ''}'
-    else:
-        assert False
 
 def main_create_session_stats_partial(last_date, days, aer_to_bwr_join_type, partial=False):
 
@@ -105,25 +93,6 @@ def main_create_session_stats(last_date, days):
                  f'{union_str}')
         print(f'creating: {project_id}.DAS_increment.{table}')
         get_bq_data(query)
-
-def get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count,
-                      days_smoothing):
-    return f"{last_date.strftime("%Y-%m-%d")}_{days}_mab{min_all_bidder_session_count}_mib{min_individual_bidder_session_count}_ds{days_smoothing}"
-
-def get_dims(dims_list):
-    return ''.join([', ' + d for d in dims_list])
-
-def get_dims_name(dims_list):
-    return ''.join(['_' + d[:3] for d in dims_list])
-
-def get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
-                      min_individual_bidder_session_count):
-    dims = get_dims(dims_list)
-
-    tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count,
-                                      min_individual_bidder_session_count, days_smoothing)
-    name = f"{get_dims_name(dims_list)}_{tablename_ext}"
-    return dims, name
 
 def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1, 7],
                               min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000):
@@ -343,7 +312,7 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
     days_match_list = [0, 1, 2, 7]
 
     perc_uplift_rev_dict = {}
-    for bidder_count in [5, 8, 10]:
+    for bidder_count in [5, 8, 9, 10]:
         res_list = []
         for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
             if DAS_calcs:

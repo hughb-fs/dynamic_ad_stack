@@ -1,5 +1,8 @@
 
-CREATE TEMP TABLE bidder_rps as
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_bidder_rps}_unnest`
+    OPTIONS (
+        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
+    AS
 
 with raw as (
 
@@ -36,14 +39,14 @@ with raw as (
         and date >= date_add((select min(date) from `{project_id}.DAS_increment.{tablename_from}`), interval {N_days_preceding} day)
 
 ), qual_2 as (
-    select *
+    select *, sum(session_count) over(partition by date {dims}) all_bidder_session_count
     from qual_1
     qualify sum(session_count) over(partition by date {dims}) > {min_all_bidder_session_count}
 
 ), pre_stats as (
 
     select date, bidder {dims},
-        session_count,
+        session_count, all_bidder_session_count,
         safe_divide(revenue, session_count) mean_revenue,
         safe_divide(revenue_sq, session_count) mean_revenue_sq
     from qual_2
@@ -51,7 +54,7 @@ with raw as (
 ), stats as (
 
     select date, bidder {dims},
-        session_count,
+        session_count, all_bidder_session_count,
         mean_revenue * 1000 rps,
         if(mean_revenue_sq < pow(mean_revenue, 2), 0, sqrt((mean_revenue_sq - pow(mean_revenue, 2)) / session_count)) * 1000 rps_std
     from pre_stats
@@ -74,7 +77,7 @@ CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_bidder_rps}`
     AS
 
 select date {dims}, {config_level} config_level, array_agg(struct(bidder, rps, rn)) as bidder_rps
-from bidder_rps
+from `{project_id}.DAS_increment.{tablename_to_bidder_rps}_unnest`
 group by date {dims};
 
 
@@ -84,7 +87,7 @@ CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}`
     AS
 
 select date {dims}, {config_level} config_level, array_agg(bidder) bidders
-from bidder_rps
+from `{project_id}.DAS_increment.{tablename_to_bidder_rps}_unnest`
 where rn <= {bidder_count}
 group by date {dims};
 
