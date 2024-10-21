@@ -45,23 +45,30 @@ def main_z_score_plot():
 
     repl_dict = {'project_id': project_id}
 
+    cohort_count_list = []
     with PdfPages(f'plots/z_scores.pdf') as pdf:
         for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (10000, 200)]:
             for days_smoothing in [1, 7]:
 
-                for config_level, dims_list in enumerate(config_hierarchy[2:]):
+                for config_level, dims_list in enumerate(config_hierarchy):
                     dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
                                                    min_individual_bidder_session_count)
+
+                    print(f'loading and plotting: {project_id}.DAS_increment.DAS_bidder_rps{name}')
+                    cohort_count = get_bq_data(f'select avg(count) from (select date, count(*) count '
+                                               f'from `{project_id}.DAS_increment.DAS_bidder_rps{name}` where date>"2024-7-4" group by 1)').values[0][0]
+                    cohort_count_list.append(
+                        {'min_all_bidder_session_count': min_all_bidder_session_count, 'days_smoothing': days_smoothing,
+                         'dims': dims, 'cohort_count': cohort_count})
+
                     repl_dict['dims'] = dims
                     repl_dict['tablename'] = f'DAS_bidder_rps{name}_unnest'
-
-                    print(f'loading and plotting: {repl_dict['tablename']}')
                     query = open(os.path.join(sys.path[0], 'queries/query_inv_z_score.sql'), "r").read()
                     df = get_bq_data(query, repl_dict)
 
                     max_z_plot = 2
                     fig_1, ax_1 = plt.subplots(figsize=(16, 12), nrows=2, ncols=2)
-                    fig_1.suptitle(f'min_all_bidder_session_count: {min_all_bidder_session_count}, days_smoothing: {days_smoothing}, dims: {dims}')
+                    fig_1.suptitle(f'min_all_bidder_session_count: {min_all_bidder_session_count}, days_smoothing: {days_smoothing}, dims: {dims}, cohort_count: {cohort_count:0.0f}')
                     ax_1 = ax_1.flatten()
                     for rn_1_2 in range(4):
                         df_rn_1_2 = df[df['rn_1_2'] == rn_1_2 + 1]
@@ -82,9 +89,12 @@ def main_z_score_plot():
                         df_hist_cdf.plot(ax=ax_1[rn_1_2], ylabel='cdf', xlim=[0, max_z_plot], title=f'diff: {rn_1_2+1}')
 
                     pdf.savefig(fig_1)
-                    #fig_1.savefig('plots/a.png')
+                    fig_1.savefig(f'plots/z_score_pngs/z_score_{repl_dict['tablename']}.png')
 
-        f = 9
+    cohort_count_all = pd.DataFrame(cohort_count_list).pivot(index='dims', values='cohort_count',
+                                                             columns=['min_all_bidder_session_count', 'days_smoothing'])
+    cohort_count_all.to_csv('plots/cohort_counts.csv')
+    f = 9
 
 if __name__ == "__main__":
     main_z_score_plot()
