@@ -92,16 +92,16 @@ where rn <= {bidder_count}
 group by date {dims};
 
 
---CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}_string`
---    OPTIONS (
---        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
---    AS
---
---select date {dims}, {config_level} config_level,
---    string_agg(bidder, ',' order by bidder) bidders
---from bidder_rps
---where rn <= {bidder_count}
---group by date {dims};
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.{tablename_to_config}_string`
+    OPTIONS (
+        expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
+    AS
+
+select date {dims}, {config_level} config_level,
+    string_agg(bidder, ',' order by bidder) bidders
+from `{project_id}.DAS_increment.{tablename_to_bidder_rps}_unnest`
+where rn <= {bidder_count}
+group by date {dims};
 
 
 

@@ -350,9 +350,13 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
     days = 190
-    #days = 20
 
     # main_create_session_stats(last_date, days)
-    main_investigate(last_date, days, False, False)
+    # main_investigate(last_date, days, False, False)
+
+    days = 20
+    main_create_daily_configs(last_date, days, bidder_count=3, days_smoothing_list=[7])
+
+
 
 
