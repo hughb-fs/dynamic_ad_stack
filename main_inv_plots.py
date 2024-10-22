@@ -51,7 +51,7 @@ def main_z_score_plot():
             for days_smoothing in [1, 7]:
 
                 for config_level, dims_list in enumerate(config_hierarchy):
-                    dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
+                    dims, name, not_null_str = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
                                                    min_individual_bidder_session_count)
 
                     print(f'loading and plotting: {project_id}.DAS_increment.DAS_bidder_rps{name}')

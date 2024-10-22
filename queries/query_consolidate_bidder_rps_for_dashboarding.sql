@@ -1,20 +1,14 @@
 
-CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext}_string`
+CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_bidder_rps_for_dashboarding_{tablename_ext}`
     OPTIONS (
         expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 365 DAY))
     AS
 
-select date, 'default' geo_continent, 'default' country_code, 'default' domain, 'default' device_category, 'default' rtt_category, config_level, bidders
-from `{project_id}.DAS_increment.DAS_config_{tablename_ext}_string`;
+select date, 'default', 'default', 'default', 'default', 'default', config_level, bidders
+from `streamamp-qa-239417.DAS_increment.DAS_bidder_rps_{tablename_ext}_unnest`
 
 
-insert into `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext}_string`
-with t1 as (
-  select c.*, l0.bidders as bidders_existing
-  from `{project_id}.DAS_increment.DAS_config_geo_{tablename_ext}_string` c
-  left join `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext}_string` l0
-  using (date)
-)
+
 select date, geo_continent, 'default', 'default', 'default', 'default', config_level, bidders
 from t1
 where bidders != bidders_existing;
@@ -106,5 +100,9 @@ CREATE OR REPLACE TABLE `{project_id}.DAS_increment.DAS_config_consolidated_{tab
 
 select * except (bidders), split(bidders, ',') bidders
 from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext}_string`
+
+
+
+
 
 

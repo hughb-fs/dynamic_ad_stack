@@ -15,7 +15,10 @@ def get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder
     tablename_ext = get_tablename_ext(last_date, days, min_all_bidder_session_count,
                                       min_individual_bidder_session_count, days_smoothing)
     name = f"{get_dims_name(dims_list)}_{tablename_ext}"
-    return dims, name
+
+    not_null_str = ''.join([f' and {d} is not null and CHAR_LENGTH({d}) > 0' for d in dims_list])
+
+    return dims, name, not_null_str
 def get_daily_data_tablename(expt_or_opt, expanded, last_date, days, aer_to_bwr_join_type='join', partial=False):
 
     if expt_or_opt == "expt":

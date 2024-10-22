@@ -109,19 +109,24 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
             continue
 
         for config_level, dims_list in enumerate(config_hierarchy):
-            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
+            dims, name, not_null_str = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             repl_dict['dims'] = dims
             repl_dict['N_days_preceding'] = days_smoothing - 1
             repl_dict['tablename_to_bidder_rps'] = f'DAS_bidder_rps{name}'
             repl_dict['tablename_to_config'] = f'DAS_config{name}_bc{bidder_count}'
             repl_dict['bidder_count'] = bidder_count
             repl_dict['config_level'] = config_level
+            repl_dict['not_null_str'] = not_null_str
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
-
             query = open(os.path.join(sys.path[0], 'queries/query_create_bidder_rps_and_DAS_config.sql'), "r").read()
             get_bq_data(query, repl_dict)
 
+        repl_dict_2 = {'project_id': project_id,
+                       'tablename_ext': f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}_bc{bidder_count}'}
+        print(f'creating: DAS_config_consolidated_{repl_dict_2["tablename_ext"]}')
+        query = open(os.path.join(sys.path[0], 'queries/query_consolidate_configs.sql'), "r").read()
+        get_bq_data(query, repl_dict_2)
 
 def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session_count, min_individual_bidder_session_count):
 
@@ -130,7 +135,7 @@ def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session
             continue
 
         for dims_list in config_hierarchy:
-            dims, name = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
+            dims, name, not_null_str = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
             tablename = f'DAS_bidder_rps{name}_bc{bidder_count}'
             query = (f'select bidder, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
                      f'from `{project_id}.DAS_increment.{tablename}` '
@@ -215,23 +220,36 @@ def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_co
                            'tablename_to': f'{strategy}_bidders_{tablename_ext}_bm{days_match}_bc{bidder_count}'}
 
             query = open(os.path.join(sys.path[0], f'queries/query_create_{strategy}_bidders_from_configs.sql'), "r").read()
+            print(f'creating: {repl_dict_1["tablename_to"]}')
+            if DAS_calcs:
+                get_bq_data(query, repl_dict_1)
+
+            repl_dict_1['tablename_ext_consolidated'] = f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}_bc{bidder_count}'
+            print(f'creating: {repl_dict_1["tablename_to"]}_consolidated')
+
+            query = open(os.path.join(sys.path[0], f'queries/query_create_DAS_bidders_from_consolidated_configs.sql'), "r").read()
             if DAS_calcs:
                 get_bq_data(query, repl_dict_1)
 
             tablename_ext_bidder_rps = get_tablename_ext(last_date, days, rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count, 1)
-            repl_dict_2 = {'project_id': project_id,
-                           'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
-                           'tablename_bidders': repl_dict_1['tablename_to'],
-                           'tablename_to': f'revenue_{repl_dict_1['tablename_to']}'}
+            ext_list = ['']
+            if strategy == 'DAS':
+                ext_list.append('_consolidated')
 
-            query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-            if True:#DAS_calcs:
-                get_bq_data(query, repl_dict_2)
+            for ext in ext_list:
+                repl_dict_2 = {'project_id': project_id,
+                               'tablename_ext_bidder_rps': tablename_ext_bidder_rps,
+                               'tablename_bidders': repl_dict_1['tablename_to'] + ext,
+                               'tablename_to': f'revenue_{repl_dict_1['tablename_to'] + ext}'}
 
-            df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
-            df = df.set_index('date').rename(columns={'revenue': 
-                f'rev_{strategy}_{days_smoothing}_{days_match}_{min_all_bidder_session_count}_{min_individual_bidder_session_count}'})
-            df_list.append(df)
+                query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
+                if DAS_calcs:
+                    get_bq_data(query, repl_dict_2)
+
+                df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
+                df = df.set_index('date').rename(columns={'revenue':
+                    f'rev_{strategy}{ext}_{days_smoothing}_{days_match}_{min_all_bidder_session_count}_{min_individual_bidder_session_count}'})
+                df_list.append(df)
 
     return df_list
 
@@ -247,20 +265,20 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
     YM_strategy_list = [('YM_week', 'week', [([], 10),
                            (['geo_continent'], 10),
                            (['geo_continent', 'country_code'], 5),
-                           (['domain'], 10)]),
-                        ('YM_month', 'month', [([], 10),
-                                               (['geo_continent'], 10),
-                                               (['geo_continent', 'country_code'], 30),
-                                               (['geo_continent', 'country_code', 'device_category'], 30),
-                                               (['domain'], 100),
-                                               (['geo_continent', 'country_code', 'domain'], 100)]),
-                        ('YM_quarter', 'quarter', [([], 10),
-                                                   (['geo_continent'], 10),
-                                                   (['geo_continent', 'country_code'], 50),
-                                                   (['geo_continent', 'country_code', 'device_category'], 50),
-                                                   (['domain'], 200),
-                                                   (['geo_continent', 'country_code', 'domain'], 200)])
-                        ]
+                           (['domain'], 10)])]#,
+                        # ('YM_month', 'month', [([], 10),
+                        #                        (['geo_continent'], 10),
+                        #                        (['geo_continent', 'country_code'], 30),
+                        #                        (['geo_continent', 'country_code', 'device_category'], 30),
+                        #                        (['domain'], 100),
+                        #                        (['geo_continent', 'country_code', 'domain'], 100)]),
+                        # ('YM_quarter', 'quarter', [([], 10),
+                        #                            (['geo_continent'], 10),
+                        #                            (['geo_continent', 'country_code'], 50),
+                        #                            (['geo_continent', 'country_code', 'device_category'], 50),
+                        #                            (['domain'], 200),
+                        #                            (['geo_continent', 'country_code', 'domain'], 200)])
+                        # ]
 
     df_list = []
     for YM_strategy_name, YM_date_granularity, YM_config_hierarchy in YM_strategy_list:
@@ -299,7 +317,7 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
 
         print(f'creating: {repl_dict_2['tablename_to']}')
         query = open(os.path.join(sys.path[0], 'queries/query_create_revenue_from_bidders.sql'), "r").read()
-        if True:#YM_calcs:
+        if YM_calcs:
             get_bq_data(query, repl_dict_2)
 
         df = get_bq_data(f'select date, sum(revenue) revenue from `{project_id}.DAS_increment.{repl_dict_2["tablename_to"]}` group by 1 order by 1')
@@ -309,17 +327,17 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
     return df_list
     
 def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
-
+    session_count_list = [(10000, 200)]#(100000, 1000), (10000, 200)]
     DAS_strategy_list = ['DAS', 'YM_daily']
-    days_smoothing_list = [1, 7]
-    days_match_list = [0, 1, 2, 7]
+    days_smoothing_list = [1]#, 7]
+    days_match_list = [0, 1]#, 2, 7]
 
-    for (rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
+    for (rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count) in session_count_list:
 
         perc_uplift_rev_dict = {}
-        for bidder_count in [5, 8, 9, 10]:
+        for bidder_count in [9, 10]:
             res_list = []
-            for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
+            for (min_all_bidder_session_count, min_individual_bidder_session_count) in session_count_list:
                 if DAS_calcs:
                     main_create_daily_configs(last_date, days, bidder_count, days_smoothing_list,
                                               min_all_bidder_session_count, min_individual_bidder_session_count)
@@ -352,10 +370,10 @@ if __name__ == "__main__":
     days = 190
 
     # main_create_session_stats(last_date, days)
-    # main_investigate(last_date, days, False, False)
-
     days = 20
-    main_create_daily_configs(last_date, days, bidder_count=3, days_smoothing_list=[7])
+    main_investigate(last_date, days, True, True)
+
+    #main_create_daily_configs(last_date, days, bidder_count=3, days_smoothing_list=[7])
 
 
 

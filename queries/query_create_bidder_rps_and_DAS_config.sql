@@ -11,8 +11,7 @@ with raw as (
     left join `sublime-elixir-273810.ideal_ad_stack.continent_country_mapping` on country_code = geo_country
     where bidder not in ('amazon', 'preGAMAuction', 'seedtag', 'justpremium', 'sonobi')
         and status = 'client'
---        and date <= date_sub('{processing_date}', interval 1 day)
-        and country_code is not null and country_code != ''
+        {not_null_str}
 
 ), agg_1_day as (
     select date, bidder {dims},
