@@ -41,25 +41,37 @@ config_hierarchy = [[],
 
 def main_z_score_plot():
     last_date = dt.date(2024, 10, 10)
-    days = 190
+    days = 20
+    bidder_count = 10
 
     repl_dict = {'project_id': project_id}
 
     cohort_count_list = []
     with PdfPages(f'plots/z_scores.pdf') as pdf:
-        for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(100000, 1000), (10000, 200)]:
+        for (min_all_bidder_session_count, min_individual_bidder_session_count) in [(10000, 200), (100000, 1000)]:
             for days_smoothing in [1, 7]:
 
                 for config_level, dims_list in enumerate(config_hierarchy):
+
+                    if config_level <= 1:
+                        continue
+
                     dims, name, not_null_str = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count,
                                                    min_individual_bidder_session_count)
 
                     print(f'loading and plotting: {project_id}.DAS_increment.DAS_bidder_rps{name}')
                     cohort_count = get_bq_data(f'select avg(count) from (select date, count(*) count '
-                                               f'from `{project_id}.DAS_increment.DAS_bidder_rps{name}` where date>"2024-7-4" group by 1)').values[0][0]
+                                               f'from `{project_id}.DAS_increment.DAS_bidder_rps{name}` group by 1)').values[0][0]
+
+                    tablename = f'DAS_config_consolidated_{get_tablename_ext(last_date, days, min_all_bidder_session_count,
+                                  min_individual_bidder_session_count, days_smoothing)}_bc{bidder_count}'
+
+                    cohort_count_consolidated = get_bq_data(f'select avg(count) from (select date, count(*) count '
+                                               f'from `{project_id}.DAS_increment.{tablename}` where config_level={config_level} group by 1)').values[0][0]
+
                     cohort_count_list.append(
                         {'min_all_bidder_session_count': min_all_bidder_session_count, 'days_smoothing': days_smoothing,
-                         'dims': dims, 'cohort_count': cohort_count})
+                         'dims': dims, 'cohort_count': cohort_count, 'cohort_count_consolidated': cohort_count_consolidated})
 
                     repl_dict['dims'] = dims
                     repl_dict['tablename'] = f'DAS_bidder_rps{name}_unnest'
@@ -91,7 +103,7 @@ def main_z_score_plot():
                     pdf.savefig(fig_1)
                     fig_1.savefig(f'plots/z_score_pngs/z_score_{repl_dict['tablename']}.png')
 
-    cohort_count_all = pd.DataFrame(cohort_count_list).pivot(index='dims', values='cohort_count',
+    cohort_count_all = pd.DataFrame(cohort_count_list).pivot(index='dims', values=['cohort_count', 'cohort_count_consolidated'],
                                                              columns=['min_all_bidder_session_count', 'days_smoothing'])
     cohort_count_all.to_csv('plots/cohort_counts.csv')
     f = 9

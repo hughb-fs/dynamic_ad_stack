@@ -125,8 +125,15 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
         repl_dict_2 = {'project_id': project_id,
                        'tablename_ext': f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}_bc{bidder_count}'}
         print(f'creating: DAS_config_consolidated_{repl_dict_2["tablename_ext"]}')
-        query = open(os.path.join(sys.path[0], 'queries/query_consolidate_configs.sql'), "r").read()
+        query = open(os.path.join(sys.path[0], 'queries/query_consolidate_DAS_configs.sql'), "r").read()
         get_bq_data(query, repl_dict_2)
+
+        repl_dict_3 = {'project_id': project_id,
+                       'tablename_ext': f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}'}
+        print(f'creating: DAS_bidder_rps_for_{repl_dict_3["tablename_ext"]}_dashboarding')
+        query = open(os.path.join(sys.path[0], 'queries/query_consolidate_bidder_rps_for_dashboarding.sql'), "r").read()
+        get_bq_data(query, repl_dict_3)
+
 
 def main_plot_daily_config(last_date, days, bidder_count, min_all_bidder_session_count, min_individual_bidder_session_count):
 
@@ -327,15 +334,15 @@ def create_YM_strategy_bidders_and_revenue(last_date, days, bidder_count=10, YM_
     return df_list
     
 def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
-    session_count_list = [(10000, 200)]#(100000, 1000), (10000, 200)]
+    session_count_list = [(100000, 1000), (10000, 200)]
     DAS_strategy_list = ['DAS', 'YM_daily']
-    days_smoothing_list = [1]#, 7]
-    days_match_list = [0, 1]#, 2, 7]
+    days_smoothing_list = [1, 7]
+    days_match_list = [0, 1, 2, 7]
 
     for (rev_calc_min_all_bidder_session_count, rev_calc_min_individual_bidder_session_count) in session_count_list:
 
         perc_uplift_rev_dict = {}
-        for bidder_count in [9, 10]:
+        for bidder_count in [10]:
             res_list = []
             for (min_all_bidder_session_count, min_individual_bidder_session_count) in session_count_list:
                 if DAS_calcs:
