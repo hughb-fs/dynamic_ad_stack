@@ -8,26 +8,28 @@ with cohorts as (
     select * except (date), DATE_SUB(date, INTERVAL {days_match} day) as date, date as date_session_stats
     from `{project_id}.DAS_increment.daily_session_stats_{tablename_ext_session_stats}`
     join `sublime-elixir-273810.ideal_ad_stack.continent_country_mapping` on country_code = geo_country
-),
+), 
 
 cohort_bidders as (
     select c.*,
-        coalesce(l7.config_level, l6.config_level, l5.config_level, l4.config_level, l3.config_level, l2.config_level, l0.config_level) config_level,
-        coalesce(l7.bidders, l6.bidders, l5.bidders, l4.bidders, l3.bidders, l2.bidders, l0.bidders) bidders
+        coalesce(l7.config_level, l6.config_level, l5.config_level, l4.config_level, l3.config_level, l2.config_level, l1.config_level, l0.config_level) config_level,
+        coalesce(l7.bidders, l6.bidders, l5.bidders, l4.bidders, l3.bidders, l2.bidders, l1.bidders, l0.bidders) bidders
 
     from cohorts c
     left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=7) l7
-        using (date, country_code, domain, device_category, rtt_category)
+        using (date, geo_continent, country_code, domain, device_category, rtt_category)
     left join (select * except (rtt_category) from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=6) l6
-        using (date, country_code, domain, device_category)
+        using (date, geo_continent, country_code, domain, device_category)
     left join (select * except (device_category, rtt_category) from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=5) l5
-        using (date, country_code, domain)
+        using (date, geo_continent, country_code, domain)
     left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=4) l4
-        using (date, country_code, device_category, rtt_category)
+        using (date, geo_continent, country_code, device_category, rtt_category)
     left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=3) l3
-        using (date, country_code, device_category)
-    left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level in (1, 2)) l2
-        using (date, country_code)
+        using (date, geo_continent, country_code, device_category)
+    left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=2) l2
+        using (date, geo_continent, country_code)
+    left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=1) l1
+        using (date, geo_continent)
     left join (select * from `{project_id}.DAS_increment.DAS_config_consolidated_{tablename_ext_consolidated}` where config_level=0) l0
         using (date)
 )

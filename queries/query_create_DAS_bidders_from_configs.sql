@@ -8,7 +8,7 @@ with cohorts as (
     select * except (date), DATE_SUB(date, INTERVAL {days_match} day) as date, date as date_session_stats
     from `{project_id}.DAS_increment.daily_session_stats_{tablename_ext_session_stats}`
     join `sublime-elixir-273810.ideal_ad_stack.continent_country_mapping` on country_code = geo_country
-), 
+),
 
 cohort_bidders as (
     select c.*,

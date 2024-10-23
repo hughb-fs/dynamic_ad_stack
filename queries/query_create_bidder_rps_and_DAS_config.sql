@@ -45,7 +45,7 @@ with raw as (
 ), pre_stats as (
 
     select date, bidder {dims},
-        session_count, all_bidder_session_count,
+        session_count, all_bidder_session_count, revenue,
         safe_divide(revenue, session_count) mean_revenue,
         safe_divide(revenue_sq, session_count) mean_revenue_sq
     from qual_2
@@ -53,7 +53,7 @@ with raw as (
 ), stats as (
 
     select date, bidder {dims},
-        session_count, all_bidder_session_count,
+        session_count, all_bidder_session_count, revenue,
         mean_revenue * 1000 rps,
         if(mean_revenue_sq < pow(mean_revenue, 2), 0, sqrt((mean_revenue_sq - pow(mean_revenue, 2)) / session_count)) * 1000 rps_std
     from pre_stats
