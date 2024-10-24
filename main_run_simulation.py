@@ -129,19 +129,19 @@ def main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_l
 
             print(f'creating: {repl_dict['tablename_to_bidder_rps']} and {repl_dict['tablename_to_config']}')
             query = open(os.path.join(sys.path[0], 'queries/query_create_bidder_rps_and_DAS_config.sql'), "r").read()
-            get_bq_data(query, repl_dict)
+            #get_bq_data(query, repl_dict)
 
         repl_dict_2 = {'project_id': project_id,
                        'tablename_ext': f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}_bc{bidder_count}'}
         print(f'creating: DAS_config_consolidated_{repl_dict_2["tablename_ext"]}')
         query = open(os.path.join(sys.path[0], 'queries/query_consolidate_DAS_configs.sql'), "r").read()
-        get_bq_data(query, repl_dict_2)
+        #get_bq_data(query, repl_dict_2)
 
         repl_dict_3 = {'project_id': project_id,
                        'tablename_ext': f'{get_tablename_ext(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count, days_smoothing)}'}
         print(f'creating: DAS_bidder_rps_for_{repl_dict_3["tablename_ext"]}_dashboarding')
         query = open(os.path.join(sys.path[0], 'queries/query_consolidate_bidder_rps_for_dashboarding.sql'), "r").read()
-        #get_bq_data(query, repl_dict_3)
+        get_bq_data(query, repl_dict_3)
 
 def create_DAS_strategy_bidders_and_revenue(last_date, days, strategy, bidder_count=10, days_smoothing_list=[1, 7], days_match_list=[0, 1, 2, 7],
                         min_all_bidder_session_count=100000, min_individual_bidder_session_count=1000,
@@ -312,15 +312,97 @@ def main_investigate(last_date, days, DAS_calcs=True, YM_calcs=True):
 
         pd.DataFrame(perc_uplift_rev_dict).to_csv(f'plots/res_all_rev_calc_{rev_calc_min_all_bidder_session_count}_{rev_calc_min_individual_bidder_session_count}.csv')
 
+def main_plot_daily_config(last_date, days, min_all_bidder_session_count, min_individual_bidder_session_count):
+
+    for days_smoothing in [1]:#, 7]:
+        if days < days_smoothing:
+            continue
+
+        dims, name, _ = get_dims_and_name([], last_date, days, days_smoothing, min_all_bidder_session_count,
+                                          min_individual_bidder_session_count)
+        tablename = f'DAS_bidder_rps{name}_dashboarding'
+        plot_from_tablename(tablename, name + '_dashboarding', days_smoothing, ['combined'])
+
+        for dims_list in config_hierarchy:
+            dims, name, _ = get_dims_and_name(dims_list, last_date, days, days_smoothing, min_all_bidder_session_count, min_individual_bidder_session_count)
+            tablename = f'DAS_bidder_rps{name}_unnest'
+            plot_from_tablename(tablename, name, days_smoothing, dims=[])
+
+def plot_from_tablename(tablename, name, days_smoothing, dims=[]):
+        query = (f'select bidder, rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
+                     f'from `{project_id}.DAS_increment.{tablename}` '
+                     f'group by 1, 2')
+
+        df = get_bq_data(query)
+        df['revenue'] = df['session_count'] * df['rps']
+
+        for col in ['count', 'session_count', 'revenue']:
+            df_p = df.pivot(index='rn', columns='bidder', values=col).fillna(0)
+            df_p_cum_sum = df_p.cumsum()
+            df_totals = df_p.sum()
+            df_r = 100 * df_p_cum_sum / df_totals
+            col_order = df_r.mean().sort_values(ascending=False).index
+            df_r = df_r[col_order]
+
+            fig, ax = plt.subplots(figsize=(12, 9))
+            df_r.plot(ax=ax, xlabel='bidder status rank', ylabel=f'cumulative proportion weighted by {col}',
+                      title=f'Bidder status performance summary, for cohort level: {'GAM' if len(dims)==0 else dims}')
+            fig.savefig(f'plots/bidder_status/bidder_status_perf{name}_{col}.png')
+
+        where_and = ''
+        if 'country_code' in dims:
+            where_and += f' and country_code = "US"'
+        if 'device_category' in dims:
+            where_and += f' and device_category = "desktop"'
+
+        query = (f'select date, bidder, avg(rn) rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
+                 f'from `{project_id}.DAS_increment.{tablename}` '
+                 f'where 1=1 {where_and}'
+                 f'group by 1, 2')
+
+        df = get_bq_data(query)
+        for col in ['rn', 'rps']:
+            df_t = df.pivot(index='date', columns='bidder', values=col)
+            col_order = df_t.iloc[-1].sort_values(ascending=False).index
+            df_t = df_t[col_order]
+            fig, ax = plt.subplots(figsize=(12, 9))
+            df_t.plot(ax=ax, ylabel=col, title=f'Bidder {col} for date{where_and} with {days_smoothing} days smoothing')
+            fig.savefig(f'plots/bidder_status/bidder_status_over_time{name}_{col}.png')
+
+        if 'continent' in dims:
+            query = (
+                f'select date, bidder, geo_continent, avg(rn) rn, count(*) count, sum(session_count) session_count, avg(rps) rps '
+                f'from `{project_id}.DAS_increment.{tablename}` '
+                f'group by 1, 2, 3')
+            df = get_bq_data(query)
+
+            with PdfPages(f'plots/configs{name}.pdf') as pdf:
+                for continent in df['geo_continent'].unique():
+                    df_c = df[df['geo_continent'] == continent]
+
+                    fig, ax = plt.subplots(figsize=(12, 9), nrows=2)
+                    fig.suptitle(continent)
+                    for i, col in enumerate(['rn', 'rps']):
+                        df_c_v = df_c.pivot(index='date', columns='bidder', values=col)
+                        col_order = df_c_v.iloc[-1].sort_values(ascending=False).index
+                        df_c_v = df_c_v[col_order]
+                        df_c_v.plot(ax=ax[i], ylabel=col)
+                    pdf.savefig()
+
+
+
 if __name__ == "__main__":
     last_date = dt.date(2024, 10, 10)
     days = 190
 
     # main_create_session_stats(last_date, days)
     days = 80
-    main_investigate(last_date, days, True, True)
 
-    #main_create_daily_configs(last_date, days, bidder_count=3, days_smoothing_list=[7])
+    main_plot_daily_config(last_date, days, 100000, 1000)
+
+    # main_investigate(last_date, days, True, True)
+    #
+    #main_create_daily_configs(last_date, days, bidder_count=10, days_smoothing_list=[1])
 
 
 
